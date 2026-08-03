@@ -92,13 +92,9 @@ class SessionCalendar(TradingCalendar):
         end_minute: int,
     ) -> None:
         if not (0 <= start_hour <= 23 and 0 <= end_hour <= 23):
-            raise ValueError(
-                f"Hours must be 0–23, got start={start_hour}, end={end_hour}"
-            )
+            raise ValueError(f"Hours must be 0–23, got start={start_hour}, end={end_hour}")
         if not (0 <= start_minute <= 59 and 0 <= end_minute <= 59):
-            raise ValueError(
-                f"Minutes must be 0–59, got start={start_minute}, end={end_minute}"
-            )
+            raise ValueError(f"Minutes must be 0–59, got start={start_minute}, end={end_minute}")
 
         self._start_hour = start_hour
         self._start_minute = start_minute
@@ -169,9 +165,7 @@ def _utcfromtimestamp(ts_ms: int) -> datetime.datetime:
     return datetime.datetime.utcfromtimestamp(ts_ms / 1000.0)
 
 
-def _session_open(
-    dt: datetime.datetime, start_hour: int, start_minute: int
-) -> datetime.datetime:
+def _session_open(dt: datetime.datetime, start_hour: int, start_minute: int) -> datetime.datetime:
     """Return the session-open datetime for the UTC day of *dt*."""
     return dt.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
 
