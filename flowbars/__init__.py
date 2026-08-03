@@ -12,6 +12,7 @@ from flowbars.bars.registry import BarRegistry
 # Re-export the bar quality report
 from flowbars.quality import bar_quality_report
 from flowbars.schema import SchemaMapping
+from flowbars.calendars import ContinuousCalendar, SessionCalendar, TradingCalendar
 from flowbars.thresholds import (
     EWMAThresholdEstimator,
     StaticCalibrationHelper,
@@ -21,10 +22,13 @@ from flowbars.thresholds import (
 
 __all__ = [
     "BarRegistry",
+    "ContinuousCalendar",
     "EWMAThresholdEstimator",
     "SchemaMapping",
+    "SessionCalendar",
     "StaticCalibrationHelper",
     "StaticThresholdEstimator",
     "ThresholdEstimator",
+    "TradingCalendar",
     "bar_quality_report",
 ]
