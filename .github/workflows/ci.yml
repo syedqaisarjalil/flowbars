@@ -76,4 +76,4 @@ jobs:
         run: |
           ls -la dist/
           SDIST=$(ls dist/flowbars-*.tar.gz)
-          python -c "import tarfile, os; tf = tarfile.open(os.environ['SDIST']); assert 'flowbars/py.typed' in tf.getnames(), 'py.typed missing from sdist'; print('py.typed: OK')"
+          python -c "import tarfile, sys; tf = tarfile.open(sys.argv[1]); assert 'flowbars/py.typed' in tf.getnames(), 'py.typed missing from sdist'; print('py.typed: OK')" "$SDIST"
