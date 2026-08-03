@@ -11,8 +11,10 @@ from flowbars.bars.registry import BarRegistry
 
 # Re-export the bar quality report
 from flowbars.quality import bar_quality_report
+from flowbars.schema import SchemaMapping
 
 __all__ = [
     "BarRegistry",
+    "SchemaMapping",
     "bar_quality_report",
 ]
