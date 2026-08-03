@@ -136,6 +136,21 @@ class BaseAccumulator(ABC):
         self._close_ts = 0
         return bar
 
+    # ── bar-close statistics ────────────────────────────────────────────
+
+    def get_close_stats(self) -> tuple[float, float]:
+        """Return ``(t_stat, proportion_stat)`` for the bar about to be closed.
+
+        Called by the bar constructor **before** ``close()`` so the
+        pre-reset state is still available.  The default returns zeros —
+        standard accumulators don't need meaningful close stats because
+        their threshold estimator's ``on_bar_close`` is a no-op.
+
+        Subclasses that are used with adaptive (EWMA) thresholds override
+        this to return real values.
+        """
+        return (0.0, 0.0)
+
     # ── state persistence ───────────────────────────────────────────────
 
     def get_state(self) -> dict[str, Any]:
@@ -400,6 +415,17 @@ class ImbalanceAccumulator(BaseAccumulator):
     def should_close(self, threshold: float) -> bool:
         return abs(self._signed_imbalance) >= threshold
 
+    def get_close_stats(self) -> tuple[float, float]:
+        """Return (t_stat, θ) where θ = signed_imbalance / t_stat."""
+        if self._metric == "tick":
+            t_stat = float(self._num_ticks)
+        elif self._metric == "volume":
+            t_stat = self._volume
+        else:  # dollar
+            t_stat = self._dollar_value
+        proportion = self._signed_imbalance / t_stat if t_stat > 0.0 else 0.0
+        return (t_stat, proportion)
+
     def close(self, threshold: float) -> Bar:
         bar = self._emit_and_reset()
         # Overflow: signed excess carries into next bar
@@ -454,6 +480,8 @@ class RunAccumulator(BaseAccumulator):
         self._banked = 0.0  # cumulative from completed runs in this bar
         self._run_sign = np.nan  # NaN = no run started yet
         self._run_cum = 0.0  # cumulative within the current run
+        self._buy_cum = 0.0  # total buy-side run metric in this bar
+        self._sell_cum = 0.0  # total sell-side run metric in this bar
 
     @staticmethod
     def _same_direction(a: float, b: float) -> bool:
@@ -488,6 +516,12 @@ class RunAccumulator(BaseAccumulator):
         else:
             # Direction change: bank current run, start a new one
             self._banked += self._run_cum
+            # Track buy vs sell for P⁺ computation
+            if self._run_sign > 0.0:
+                self._buy_cum += self._run_cum
+            elif self._run_sign < 0.0:
+                self._sell_cum += self._run_cum
+            # else: _run_sign is NaN — run has no direction yet, don't count
             self._run_sign = side
             self._run_cum = metric_value
 
@@ -499,6 +533,25 @@ class RunAccumulator(BaseAccumulator):
     def should_close(self, threshold: float) -> bool:
         return self._total >= threshold
 
+    def get_close_stats(self) -> tuple[float, float]:
+        """Return (t_stat, P⁺) where P⁺ = buy_cum / (buy_cum + sell_cum).
+
+        The current (un-banked) run is included in the proportion computation
+        via the direction and cum tracked separately from buy_cum/sell_cum.
+        """
+        # Include the current (un-banked) run in the buy/sell totals
+        cur_buy = self._buy_cum
+        cur_sell = self._sell_cum
+        if self._run_sign > 0.0:
+            cur_buy += self._run_cum
+        elif self._run_sign < 0.0:
+            cur_sell += self._run_cum
+        # else: run_sign is NaN — no direction, exclude from both
+
+        total = cur_buy + cur_sell
+        proportion = cur_buy / total if total > 0.0 else 0.5  # neutral prior
+        return (self._total, proportion)
+
     def close(self, threshold: float) -> Bar:
         bar = self._emit_and_reset()
         # Overflow: the excess from total carries into the next bar.
@@ -506,6 +559,8 @@ class RunAccumulator(BaseAccumulator):
         excess = self._total - threshold
         self._banked = 0.0
         self._run_cum = max(0.0, excess)
+        self._buy_cum = 0.0
+        self._sell_cum = 0.0
         # Keep _run_sign — the overflow run continues into the next bar
         return bar
 
@@ -516,6 +571,8 @@ class RunAccumulator(BaseAccumulator):
         state["banked"] = self._banked
         state["run_sign"] = self._run_sign
         state["run_cum"] = self._run_cum
+        state["buy_cum"] = self._buy_cum
+        state["sell_cum"] = self._sell_cum
         return state
 
     def load_state(self, state: dict[str, Any]) -> None:
@@ -525,3 +582,5 @@ class RunAccumulator(BaseAccumulator):
         self._banked = state.get("banked", 0.0)
         self._run_sign = state.get("run_sign", np.nan)
         self._run_cum = state.get("run_cum", 0.0)
+        self._buy_cum = state.get("buy_cum", 0.0)
+        self._sell_cum = state.get("sell_cum", 0.0)

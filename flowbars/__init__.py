@@ -7,6 +7,7 @@ Information-driven bars: imbalance, run (tick, volume, dollar variants).
 __version__ = "0.1.0"
 
 # Public API — batch convenience functions (populated as bar types are registered)
+from flowbars.bars.constructor import BaseBarConstructor
 from flowbars.bars.registry import BarRegistry
 from flowbars.calendars import ContinuousCalendar, SessionCalendar, TradingCalendar
 
@@ -22,6 +23,7 @@ from flowbars.thresholds import (
 
 __all__ = [
     "BarRegistry",
+    "BaseBarConstructor",
     "ContinuousCalendar",
     "EWMAThresholdEstimator",
     "SchemaMapping",

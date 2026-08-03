@@ -42,6 +42,8 @@ Thumbs.db
 
 # Project docs (private — roadmap, spec, QA docs)
 project-docs/
+.claude
+.commandcode
 
 # Data (users source their own)
 data/
