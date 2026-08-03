@@ -9,6 +9,16 @@ __version__ = "0.1.0"
 # Public API — batch convenience functions (populated as bar types are registered)
 from flowbars.bars.constructor import BaseBarConstructor
 from flowbars.bars.registry import BarRegistry
+from flowbars.bars.standard import (  # noqa: F401 — triggers @register_bar side-effects
+    DollarBarConstructor,
+    TickBarConstructor,
+    TimeBarConstructor,
+    VolumeBarConstructor,
+    compute_dollar_bars,
+    compute_tick_bars,
+    compute_time_bars,
+    compute_volume_bars,
+)
 from flowbars.calendars import ContinuousCalendar, SessionCalendar, TradingCalendar
 
 # Re-export the bar quality report
@@ -25,12 +35,20 @@ __all__ = [
     "BarRegistry",
     "BaseBarConstructor",
     "ContinuousCalendar",
+    "DollarBarConstructor",
     "EWMAThresholdEstimator",
     "SchemaMapping",
     "SessionCalendar",
     "StaticCalibrationHelper",
     "StaticThresholdEstimator",
     "ThresholdEstimator",
+    "TickBarConstructor",
+    "TimeBarConstructor",
     "TradingCalendar",
+    "VolumeBarConstructor",
     "bar_quality_report",
+    "compute_dollar_bars",
+    "compute_tick_bars",
+    "compute_time_bars",
+    "compute_volume_bars",
 ]

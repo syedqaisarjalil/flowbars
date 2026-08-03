@@ -15,8 +15,12 @@ class TestPackage:
         """All public API symbols are importable."""
 
     def test_bar_registry(self) -> None:
-        """BarRegistry is empty until bar types are registered."""
-        assert flowbars.BarRegistry.list() == []
+        """BarRegistry has standard bar types registered on import."""
+        registered = flowbars.BarRegistry.list()
+        assert "tick" in registered
+        assert "volume" in registered
+        assert "dollar" in registered
+        assert "time" in registered
 
 
 class TestCoreTypes:
