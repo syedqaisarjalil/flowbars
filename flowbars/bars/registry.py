@@ -26,7 +26,7 @@ class BarRegistry:
         cls,
         name: str,
         constructor_cls: type,
-        batch_fn: BatchFunction,
+        batch_fn: BatchFunction | None = None,
     ) -> None:
         """Register a bar type.
 
@@ -38,7 +38,8 @@ class BarRegistry:
         if name in cls._constructors:
             raise ValueError(f"Bar type {name!r} is already registered.")
         cls._constructors[name] = constructor_cls
-        cls._batch_functions[name] = batch_fn
+        if batch_fn is not None:
+            cls._batch_functions[name] = batch_fn
 
     @classmethod
     def get_constructor(cls, name: str) -> type:
@@ -66,7 +67,7 @@ class BarRegistry:
         cls._batch_functions.clear()
 
 
-def register_bar(name: str):
+def register_bar(name: str) -> Callable[[type], type]:
     """Decorator that registers a bar constructor class.
 
     Usage::
@@ -77,7 +78,7 @@ def register_bar(name: str):
     """
 
     def decorator(cls: type) -> type:
-        BarRegistry.register(name, cls, None)  # batch function registered separately
+        BarRegistry.register(name, cls)  # batch_fn registered separately
         return cls
 
     return decorator

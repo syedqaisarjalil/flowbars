@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 
-def bar_quality_report(bars_df: Any) -> dict:
+def bar_quality_report(bars_df: Any) -> dict[str, Any]:
     """Run statistical diagnostics on a bar DataFrame.
 
     Checks:

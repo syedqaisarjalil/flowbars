@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass
@@ -17,7 +16,7 @@ class TickInfo:
     timestamp: int  # Unix ms (UTC)
     price: float
     volume: float
-    side: Optional[int] = None  # +1 (buy), −1 (sell), or None if not yet derived
+    side: int | None = None  # +1 (buy), −1 (sell), or None if not yet derived
 
 
 @dataclass
