@@ -16,7 +16,7 @@ class TickInfo:
     timestamp: int  # Unix ms (UTC)
     price: float
     volume: float
-    side: int | None = None  # +1 (buy), −1 (sell), or None if not yet derived
+    side: float | None = None  # +1.0 (buy), −1.0 (sell), NaN, or None if not yet derived
 
 
 @dataclass
