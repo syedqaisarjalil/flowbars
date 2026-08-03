@@ -7,7 +7,7 @@ name = "flowbars"
 version = "0.1.0"
 description = "Production-grade bar construction for financial ML — standard and information-driven bars, correct per AFML."
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Syed Qaisar Jalil"},
 ]
@@ -16,7 +16,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Financial and Insurance Industry",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
