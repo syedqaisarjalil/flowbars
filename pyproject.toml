@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "flowbars"
+version = "0.1.0"
+description = "Production-grade bar construction for financial ML — standard and information-driven bars, correct per AFML."
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Syed Qaisar Jalil"},
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=1.5",
+]
+
+[project.optional-dependencies]
+numba = ["numba>=0.57"]
+polars = ["polars>=0.19"]
+dev = [
+    "pytest>=7",
+    "pytest-cov",
+    "mypy>=1",
+    "ruff",
+]
+all = [
+    "flowbars[numba,polars]",
+]
+
+[project.urls]
+Homepage = "https://github.com/syedqaisar/flowbars"
+Repository = "https://github.com/syedqaisar/flowbars"
+
+[tool.setuptools]
+packages = {find = {where = ["."], include = ["flowbars*"]}}
+include-package-data = true
+
+[tool.setuptools.package-data]
+flowbars = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = ["E501"]  # line-length handled by formatter
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
