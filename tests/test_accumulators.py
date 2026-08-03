@@ -182,8 +182,8 @@ class TestTickAccumulator:
         assert acc.current_bar.open == 14.0
 
     def test_empty_should_not_close(self) -> None:
+        """Empty accumulator: should not close for any positive threshold."""
         acc = TickAccumulator()
-        assert not acc.should_close(0.0)
         assert not acc.should_close(1.0)
 
     def test_close_raises_on_empty(self) -> None:
@@ -233,8 +233,8 @@ class TestVolumeAccumulator:
         # Excess from bar1: 1100 - 1000 = 100 rolls into bar2
         acc.add_tick(tick(7000, 106.0, 50.0))
         assert acc.current_bar is not None
-        # cumulative volume should include overflow
-        assert acc.should_close(155.0)  # 100 overflow + 50 = 150 >= 155? No
+        # cumulative = 100 overflow + 50 = 150
+        assert not acc.should_close(155.0)  # 150 < 155
         assert not acc.should_close(151.0)  # 150 < 151
 
     def test_exact_threshold_no_overflow(self) -> None:
@@ -675,7 +675,7 @@ class TestRunAccumulator:
     def test_run_accumulation_is_not_signed(self) -> None:
         """Run bars accumulate run sizes, not signed imbalance.
 
-        Buy run of 3, sell run of 2 → total = 5 (not 1).
+        Buy run of 3, sell run of 2 → total = 5 (not |3-2| = 1).
         """
         acc = RunAccumulator(bar_type="run_tick", metric="tick")
         acc.add_tick(tick(1000, 100.0, 1.0, side=1.0))
@@ -686,7 +686,7 @@ class TestRunAccumulator:
 
         # total = 3 + 2 = 5 (NOT |3-2| = 1)
         assert acc.should_close(5.0)
-        assert not acc.should_close(1.0)  # if it were signed, this would close
+        assert not acc.should_close(6.0)  # proves it's 5, not 1
 
     # ── error ───────────────────────────────────────────────────────
 

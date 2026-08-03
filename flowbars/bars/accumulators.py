@@ -450,6 +450,7 @@ class RunAccumulator(BaseAccumulator):
         if metric not in ("tick", "volume", "dollar"):
             raise ValueError(f"metric must be 'tick', 'volume', or 'dollar', got {metric!r}")
         self._metric = metric
+        self._first_tick = True  # True only before the very first tick (survives close())
         self._banked = 0.0  # cumulative from completed runs in this bar
         self._run_sign = np.nan  # NaN = no run started yet
         self._run_cum = 0.0  # cumulative within the current run
@@ -471,9 +472,10 @@ class RunAccumulator(BaseAccumulator):
         metric_value = _imbalance_metric(tick, self._metric)
         side = tick.side if tick.side is not None else np.nan
 
-        if self._num_ticks == 1:
-            # First tick: start the first run (side may be NaN)
-            self._run_sign = side
+        if self._first_tick:
+            # Very first tick of the stream: start the first run.
+            self._first_tick = False
+            self._run_sign = side  # may be NaN
             self._run_cum = metric_value
             return
 
@@ -510,6 +512,7 @@ class RunAccumulator(BaseAccumulator):
     def get_state(self) -> dict[str, Any]:
         state = super().get_state()
         state["metric"] = self._metric
+        state["first_tick"] = self._first_tick
         state["banked"] = self._banked
         state["run_sign"] = self._run_sign
         state["run_cum"] = self._run_cum
@@ -518,6 +521,7 @@ class RunAccumulator(BaseAccumulator):
     def load_state(self, state: dict[str, Any]) -> None:
         super().load_state(state)
         self._metric = state.get("metric", "tick")
+        self._first_tick = state.get("first_tick", True)
         self._banked = state.get("banked", 0.0)
         self._run_sign = state.get("run_sign", np.nan)
         self._run_cum = state.get("run_cum", 0.0)
