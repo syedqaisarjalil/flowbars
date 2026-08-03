@@ -75,4 +75,5 @@ jobs:
       - name: Check built artifact
         run: |
           ls -la dist/
-          python -c "import tarfile; tf = tarfile.open('dist/flowbars-*.tar.gz'); assert 'flowbars/py.typed' in tf.getnames(), 'py.typed missing from sdist'"
+          SDIST=$(ls dist/flowbars-*.tar.gz)
+          python -c "import tarfile, os; tf = tarfile.open(os.environ['SDIST']); assert 'flowbars/py.typed' in tf.getnames(), 'py.typed missing from sdist'; print('py.typed: OK')"
