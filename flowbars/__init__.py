@@ -12,9 +12,19 @@ from flowbars.bars.registry import BarRegistry
 # Re-export the bar quality report
 from flowbars.quality import bar_quality_report
 from flowbars.schema import SchemaMapping
+from flowbars.thresholds import (
+    EWMAThresholdEstimator,
+    StaticCalibrationHelper,
+    StaticThresholdEstimator,
+    ThresholdEstimator,
+)
 
 __all__ = [
     "BarRegistry",
+    "EWMAThresholdEstimator",
     "SchemaMapping",
+    "StaticCalibrationHelper",
+    "StaticThresholdEstimator",
+    "ThresholdEstimator",
     "bar_quality_report",
 ]
