@@ -25,9 +25,7 @@ from flowbars.bars.numba_backend import (
     _NUMBA_AVAILABLE,
     _bar_data_to_columns,
     _dollar_bars_numba,
-    _imbalance_bars_ewma_numba,
     _imbalance_bars_numba,
-    _run_bars_ewma_numba,
     _run_bars_numba,
     _tick_bars_numba,
     _time_bars_numba,
@@ -36,7 +34,7 @@ from flowbars.bars.numba_backend import (
     numba_batch_ewma,
     numba_batch_static,
 )
-from flowbars.calendars import ContinuousCalendar, SessionCalendar
+from flowbars.calendars import SessionCalendar
 from flowbars.schema import SchemaMapping
 from flowbars.thresholds import (
     EWMAThresholdEstimator,

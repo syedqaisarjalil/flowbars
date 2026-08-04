@@ -9,7 +9,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import polars as pl
-import pytest
 
 from flowbars.adapters.polars import (
     compute_dollar_bars,
@@ -25,16 +24,32 @@ from flowbars.adapters.polars import (
 )
 from flowbars.bars.information import (
     compute_imbalance_dollar_bars as pd_compute_imbalance_dollar_bars,
+)
+from flowbars.bars.information import (
     compute_imbalance_tick_bars as pd_compute_imbalance_tick_bars,
+)
+from flowbars.bars.information import (
     compute_imbalance_volume_bars as pd_compute_imbalance_volume_bars,
+)
+from flowbars.bars.information import (
     compute_run_dollar_bars as pd_compute_run_dollar_bars,
+)
+from flowbars.bars.information import (
     compute_run_tick_bars as pd_compute_run_tick_bars,
+)
+from flowbars.bars.information import (
     compute_run_volume_bars as pd_compute_run_volume_bars,
 )
 from flowbars.bars.standard import (
     compute_dollar_bars as pd_compute_dollar_bars,
+)
+from flowbars.bars.standard import (
     compute_tick_bars as pd_compute_tick_bars,
+)
+from flowbars.bars.standard import (
     compute_time_bars as pd_compute_time_bars,
+)
+from flowbars.bars.standard import (
     compute_volume_bars as pd_compute_volume_bars,
 )
 from flowbars.calendars import ContinuousCalendar
