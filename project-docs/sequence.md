@@ -337,21 +337,21 @@ Tests are written alongside implementation, not as a separate phase.
 
 ---
 
-## Phase 14: Comparison notebooks (depends on 12.x)
+## Phase 14: Comparison notebooks (depends on 12.x) 🔶 PARTIAL
 
-### 14.1 — flowbars vs. mlfinlab/mlfinpy (correctness + performance)
-- Same input data, compare output bars.
-- Show where they diverge and why.
-- Benchmark: flowbars Python, flowbars numba, mlfinlab, mlfinpy.
+### 14.1 — flowbars vs. mlfinlab/mlfinpy (correctness + performance) 🔸 DEFERRED
+- Blocked: mlfinlab is paid/proprietary; mlfinpy requires Python ≥3.11.
+- Notebook skeleton can be added once a compatible environment is available.
 
-### 14.2 — Tick-built vs. minute-approximated bars
-- Same period, bars built from ticks vs. bars approximated from minute OHLCV.
-- Quantify divergence (not just show both exist).
-- Include run bar fragmentation analysis.
+### 14.2 — Tick-built vs. minute-approximated bars 🔸 DEFERRED
+- Blocked: flowbars has no minute-OHLCV → bars conversion path.
+- Requires a feature addition (convert OHLCV bars to pseudo-ticks, or a
+  direct OHLCV bar constructor).
 
-### 14.3 — Seeded vs. unseeded EWMA (warm-up effect)
+### 14.3 — Seeded vs. unseeded EWMA (warm-up effect) ✅ DONE
 - First N bars from unseeded EWMA vs. calibrated-seed EWMA.
 - Quantify convergence rate, show `bar_quality_report` early-instability flag.
+- Notebook: `notebooks/03_seeded_vs_unseeded_ewma.ipynb`
 
 ---
 
