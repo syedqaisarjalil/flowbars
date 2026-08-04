@@ -55,7 +55,7 @@ def bar_quality_report(
     """
     # -- lazy scipy import so the rest of flowbars doesn't need it ----------
     try:
-        from scipy import stats as scipy_stats  # noqa: PLC0415
+        from scipy import stats as scipy_stats  # type: ignore[import-untyped]  # noqa: PLC0415
     except ImportError:
         raise ImportError(_QUALITY_IMPORT_ERROR) from None
 

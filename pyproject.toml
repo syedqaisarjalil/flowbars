@@ -63,6 +63,15 @@ python_files = ["test_*.py"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+disallow_any_generics = false
+
+[[tool.mypy.overrides]]
+module = "numba"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "polars"
+ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 

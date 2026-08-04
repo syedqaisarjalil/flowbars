@@ -386,7 +386,7 @@ class BaseBarConstructor:
             )
 
         cols = _bar_data_to_columns(bar_data)
-        cols["bar_type"] = bt
+        cols["bar_type"] = bt  # type: ignore[assignment]
         result = pd.DataFrame(cols)
 
         # ── fire callbacks ─────────────────────────────────────────────
@@ -596,7 +596,7 @@ class BaseBarConstructor:
             schema=schema,
             stream_id=stream_id,
             warmup_bars=warmup_bars,
-            backend=backend,  # type: ignore[call-arg]
+            backend=backend,
         )
         inst.load_state(state)
         return inst

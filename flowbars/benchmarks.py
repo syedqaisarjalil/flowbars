@@ -138,6 +138,8 @@ def _clone_constructor(ctor: BaseBarConstructor, schema: SchemaMapping) -> BaseB
     backend = ctor._backend
 
     # Re-create accumulator of the same type
+    new_acc: Any
+    new_est: Any
     if bar_type == "tick":
         new_acc = TickAccumulator()
         new_est = StaticThresholdEstimator(threshold=est.current_threshold)
@@ -185,7 +187,7 @@ def _clone_constructor(ctor: BaseBarConstructor, schema: SchemaMapping) -> BaseB
         accumulator=new_acc,
         threshold_estimator=new_est,
         schema=schema,
-        backend=backend,  # type: ignore[arg-type]
+        backend=backend,
     )
 
 

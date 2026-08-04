@@ -28,8 +28,9 @@ _NUMBA_AVAILABLE = False
 _numba: Any = None
 
 try:
-    import numba as _numba
+    import numba
 
+    _numba = numba
     _NUMBA_AVAILABLE = True
 except ImportError:
     pass
@@ -88,7 +89,7 @@ def _njit(func):  # type: ignore[no-untyped-def]
 # function when numba is absent, which would break the nopython chain.
 
 
-@_njit
+@_njit  # type: ignore[untyped-decorator]
 def _tick_bars_numba(
     timestamps: np.ndarray,
     prices: np.ndarray,
@@ -172,7 +173,7 @@ def _tick_bars_numba(
     return out[:bar_count]
 
 
-@_njit
+@_njit  # type: ignore[untyped-decorator]
 def _volume_bars_numba(
     timestamps: np.ndarray,
     prices: np.ndarray,
@@ -255,7 +256,7 @@ def _volume_bars_numba(
     return out[:bar_count]
 
 
-@_njit
+@_njit  # type: ignore[untyped-decorator]
 def _dollar_bars_numba(
     timestamps: np.ndarray,
     prices: np.ndarray,
@@ -338,7 +339,7 @@ def _dollar_bars_numba(
     return out[:bar_count]
 
 
-@_njit
+@_njit  # type: ignore[untyped-decorator]
 def _time_bars_numba(
     timestamps: np.ndarray,
     prices: np.ndarray,
@@ -451,7 +452,7 @@ _register("dollar", _dollar_bars_numba)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-@_njit
+@_njit  # type: ignore[untyped-decorator]
 def _imbalance_bars_numba(
     timestamps: np.ndarray,
     prices: np.ndarray,
@@ -557,7 +558,7 @@ def _imbalance_bars_numba(
     return out[:bar_count]
 
 
-@_njit
+@_njit  # type: ignore[untyped-decorator]
 def _run_bars_numba(
     timestamps: np.ndarray,
     prices: np.ndarray,
@@ -698,7 +699,7 @@ _register("run_dollar", _run_bars_numba)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-@_njit
+@_njit  # type: ignore[untyped-decorator]
 def _imbalance_bars_ewma_numba(
     timestamps: np.ndarray,
     prices: np.ndarray,
@@ -826,7 +827,7 @@ def _imbalance_bars_ewma_numba(
     return out[:bar_count]
 
 
-@_njit
+@_njit  # type: ignore[untyped-decorator]
 def _run_bars_ewma_numba(
     timestamps: np.ndarray,
     prices: np.ndarray,
