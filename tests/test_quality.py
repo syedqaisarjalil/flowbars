@@ -6,12 +6,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+pytest.importorskip("scipy", reason="scipy not installed")
+
 from flowbars.quality import _autocorrelation, bar_quality_report
 
 try:
     import polars as pl
 except ImportError:
-    pl = None
+    pl = None  # type: ignore[assignment]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Helpers
