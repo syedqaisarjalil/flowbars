@@ -162,7 +162,9 @@ class SessionCalendar(TradingCalendar):
 
 def _utcfromtimestamp(ts_ms: int) -> datetime.datetime:
     """Convert a Unix-ms timestamp to a naive UTC datetime."""
-    return datetime.datetime.utcfromtimestamp(ts_ms / 1000.0)
+    return datetime.datetime.fromtimestamp(ts_ms / 1000.0, tz=datetime.timezone.utc).replace(
+        tzinfo=None
+    )
 
 
 def _session_open(dt: datetime.datetime, start_hour: int, start_minute: int) -> datetime.datetime:

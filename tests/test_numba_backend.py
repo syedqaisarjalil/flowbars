@@ -888,9 +888,19 @@ class TestNumbaEdgeCases:
             result = ctor.batch(df)
             # Should produce bars via Python fallback
             assert len(result) >= 0  # Produces output rather than crashing
-            # Should have emitted a warning about SessionCalendar
-            session_warnings = [x for x in w if "SessionCalendar" in str(x.message)]
-            assert len(session_warnings) >= 1
+            if _NUMBA_AVAILABLE:
+                # When numba is installed, the SessionCalendar warning fires
+                session_warnings = [x for x in w if "SessionCalendar" in str(x.message)]
+                assert len(session_warnings) >= 1
+            else:
+                # When numba is not installed, the "numba not available" warning
+                # fires before the SessionCalendar check. Both are valid fallbacks.
+                fallback_warnings = [
+                    x
+                    for x in w
+                    if "SessionCalendar" in str(x.message) or "numba" in str(x.message).lower()
+                ]
+                assert len(fallback_warnings) >= 1
 
     def test_backend_python_produces_same_as_numba_default(self) -> None:
         """Explicit backend='python' produces same output as pre-numba behavior."""
