@@ -524,14 +524,22 @@ class TestBatch:
         assert len(result) == 1
         assert result.iloc[0]["num_ticks"] == 4
 
-    def test_batch_without_schema_raises(self) -> None:
-        """batch() without schema raises ValueError."""
+    def test_batch_without_schema_uses_defaults(self) -> None:
+        """batch() without explicit schema defaults to timestamp/price/volume columns."""
         acc = TickAccumulator()
-        est = StaticThresholdEstimator(threshold=1.0)
+        est = StaticThresholdEstimator(threshold=2.0)
         ctor = BaseBarConstructor(acc, est)  # no schema
 
-        with pytest.raises(ValueError, match="batch.*requires a SchemaMapping"):
-            ctor.batch(pd.DataFrame())
+        # DataFrame with default column names works without explicit SchemaMapping
+        df = pd.DataFrame(
+            {
+                "timestamp": [1000, 2000, 3000, 4000],
+                "price": [10.0, 12.0, 11.0, 13.0],
+                "volume": [1.0, 1.0, 1.0, 1.0],
+            }
+        )
+        result = ctor.batch(df)
+        assert len(result) == 2  # 4 ticks / threshold=2 = 2 bars
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

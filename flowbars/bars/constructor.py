@@ -165,9 +165,10 @@ class BaseBarConstructor:
             If no :class:`SchemaMapping` was provided at construction time.
         """
         if self._schema is None:
-            raise ValueError(
-                "batch() requires a SchemaMapping. Set schema= when constructing "
-                "the bar constructor, or feed ticks manually via update()."
+            # Auto-create a default schema so convenience batch functions
+            # work without explicit SchemaMapping when columns are standard
+            self._schema = SchemaMapping(
+                {"timestamp": "timestamp", "price": "price", "volume": "volume"}
             )
 
         timestamps, prices, volumes, sides = self._schema.extract_arrays(ticks_df)
