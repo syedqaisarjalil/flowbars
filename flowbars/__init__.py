@@ -8,6 +8,20 @@ __version__ = "0.1.0"
 
 # Public API — batch convenience functions (populated as bar types are registered)
 from flowbars.bars.constructor import BaseBarConstructor
+from flowbars.bars.information import (  # noqa: F401 — triggers @register_bar side-effects
+    ImbalanceDollarBarConstructor,
+    ImbalanceTickBarConstructor,
+    ImbalanceVolumeBarConstructor,
+    RunDollarBarConstructor,
+    RunTickBarConstructor,
+    RunVolumeBarConstructor,
+    compute_imbalance_dollar_bars,
+    compute_imbalance_tick_bars,
+    compute_imbalance_volume_bars,
+    compute_run_dollar_bars,
+    compute_run_tick_bars,
+    compute_run_volume_bars,
+)
 from flowbars.bars.registry import BarRegistry
 from flowbars.bars.standard import (  # noqa: F401 — triggers @register_bar side-effects
     DollarBarConstructor,
@@ -37,6 +51,12 @@ __all__ = [
     "ContinuousCalendar",
     "DollarBarConstructor",
     "EWMAThresholdEstimator",
+    "ImbalanceDollarBarConstructor",
+    "ImbalanceTickBarConstructor",
+    "ImbalanceVolumeBarConstructor",
+    "RunDollarBarConstructor",
+    "RunTickBarConstructor",
+    "RunVolumeBarConstructor",
     "SchemaMapping",
     "SessionCalendar",
     "StaticCalibrationHelper",
@@ -48,6 +68,12 @@ __all__ = [
     "VolumeBarConstructor",
     "bar_quality_report",
     "compute_dollar_bars",
+    "compute_imbalance_dollar_bars",
+    "compute_imbalance_tick_bars",
+    "compute_imbalance_volume_bars",
+    "compute_run_dollar_bars",
+    "compute_run_tick_bars",
+    "compute_run_volume_bars",
     "compute_tick_bars",
     "compute_time_bars",
     "compute_volume_bars",

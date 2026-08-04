@@ -136,7 +136,7 @@ class BaseBarConstructor:
             if self._on_threshold_update is not None and old_threshold != new_threshold:
                 self._on_threshold_update(new_threshold)
 
-            if self._bars_emitted > self._warmup_bars:
+            if self._bars_emitted > self._warmup_bars and self._should_return(bar):
                 self._pending_bars.append(bar)
 
         # 6. Return one bar from queue, or None
@@ -352,6 +352,14 @@ class BaseBarConstructor:
 
     # ── internal helpers ────────────────────────────────────────────────
 
+    def _should_return(self, bar: Bar) -> bool:  # noqa: B027
+        """Return ``True`` if *bar* should be returned to the caller.
+
+        Override in subclasses to filter bars (e.g. ``min_run_length`` for
+        run bars).  The default always returns ``True``.
+        """
+        return True
+
     def _emit_bar(self) -> None:
         """Force-close the current bar and queue it for return.
 
@@ -366,6 +374,6 @@ class BaseBarConstructor:
         if self._on_bar is not None:
             self._on_bar(bar)
 
-        # Warmup check
-        if self._bars_emitted > self._warmup_bars:
+        # Warmup check + subclass filter (e.g. min_run_length)
+        if self._bars_emitted > self._warmup_bars and self._should_return(bar):
             self._pending_bars.append(bar)
