@@ -9,16 +9,17 @@ abstracted over the specific bar type — subclasses in ``standard/`` and
 from __future__ import annotations
 
 import collections
-from typing import Any, Callable
+import warnings
+from typing import Any, Callable, Literal
 
 import numpy as np
 import pandas as pd
 
 from flowbars.bars.accumulators import BaseAccumulator
-from flowbars.calendars import ContinuousCalendar, TradingCalendar
+from flowbars.calendars import ContinuousCalendar, SessionCalendar, TradingCalendar
 from flowbars.core import Bar, StateValidationError, TickInfo
 from flowbars.schema import SchemaMapping
-from flowbars.thresholds import ThresholdEstimator
+from flowbars.thresholds import EWMAThresholdEstimator, ThresholdEstimator
 from flowbars.tick_rule import resolve_tick_signs
 
 
@@ -46,6 +47,12 @@ class BaseBarConstructor:
         Number of initial bars to discard (not returned from
         :meth:`update` / :meth:`batch`).  Bars during warmup still
         trigger callbacks and update the estimator.
+    backend : str, default ``"python"``
+        ``"python"`` (default, always available) or ``"numba"`` (optional,
+        requires ``pip install flowbars[numba]``).  The numba backend
+        accelerates :meth:`batch` via a JIT-compiled inner loop.
+        :meth:`update` (streaming, single-tick) always uses the Python
+        backend regardless of this setting.
     on_bar : callable or None
         Called as ``on_bar(bar)`` after every bar closes (including
         warmup bars and session-boundary force-closes).
@@ -66,11 +73,14 @@ class BaseBarConstructor:
         schema: SchemaMapping | None = None,
         stream_id: str = "default",
         warmup_bars: int = 0,
+        backend: Literal["python", "numba"] = "python",
         on_bar: Callable[[Bar], None] | None = None,
         on_threshold_update: Callable[[float], None] | None = None,
     ) -> None:
         if warmup_bars < 0:
             raise ValueError(f"warmup_bars must be non-negative, got {warmup_bars}")
+        if backend not in ("python", "numba"):
+            raise ValueError(f"backend must be 'python' or 'numba', got {backend!r}")
 
         self._accumulator = accumulator
         self._threshold_estimator = threshold_estimator
@@ -78,6 +88,7 @@ class BaseBarConstructor:
         self._schema = schema
         self._stream_id = stream_id
         self._warmup_bars = warmup_bars
+        self._backend = backend
         self._on_bar = on_bar
         self._on_threshold_update = on_threshold_update
 
@@ -176,6 +187,11 @@ class BaseBarConstructor:
         # Derive signs if not supplied
         sides = resolve_tick_signs(prices, sides)
 
+        # ── numba path ──────────────────────────────────────────────────
+        if self._backend == "numba":
+            return self._batch_numba(timestamps, prices, volumes, sides)
+
+        # ── Python path (unchanged) ─────────────────────────────────────
         bars: list[Bar] = []
         n = len(timestamps)
         for i in range(n):
@@ -233,6 +249,209 @@ class BaseBarConstructor:
             ]
         )
 
+    # ── numba batch path ──────────────────────────────────────────────────
+
+    def _batch_numba(
+        self,
+        timestamps: np.ndarray,
+        prices: np.ndarray,
+        volumes: np.ndarray,
+        sides: np.ndarray,
+    ) -> pd.DataFrame:
+        """Run the batch bar-construction loop via numba (or fall back to Python).
+
+        Handles static and EWMA thresholds, time-bar special casing, and
+        warmup-bar slicing.  Falls back to the Python path when:
+
+        * numba is not installed
+        * a :class:`SessionCalendar` is in use (boundaries are
+          infrequent callbacks — not worth duplicating in numba)
+        * an unsupported calendar type is detected
+        """
+        from flowbars.bars.numba_backend import (
+            _NUMBA_AVAILABLE,
+            _bar_data_to_columns,
+            _get_compilation_warning,
+            numba_batch_ewma,
+            numba_batch_static,
+        )
+
+        bar_type = self._accumulator._bar_type
+
+        # ── fallback checks ────────────────────────────────────────────
+        if not _NUMBA_AVAILABLE:
+            _get_compilation_warning()
+            return self._batch_python(timestamps, prices, volumes, sides)
+
+        if isinstance(self._calendar, SessionCalendar):
+            warnings.warn(
+                "SessionCalendar is not supported by the numba backend. "
+                "Falling back to the Python path."
+            )
+            return self._batch_python(timestamps, prices, volumes, sides)
+
+        # ── determine threshold config ─────────────────────────────────
+        estimator = self._threshold_estimator
+
+        if bar_type == "time":
+            # Time bars: extract interval_ms and anchor from the accumulator.
+            # TimeAccumulator stores these — drop into the instance to read them.
+            acc = self._accumulator
+            interval_ms: int = getattr(acc, "_interval_ms", 60000)
+            anchor: str = getattr(acc, "_anchor", "clock")
+            try:
+                bar_data, bt = numba_batch_static(
+                    bar_type="time",
+                    timestamps=timestamps,
+                    prices=prices,
+                    volumes=volumes,
+                    sides=None,
+                    threshold=0.0,  # unused by time bars
+                    interval_ms=interval_ms,
+                    anchor=anchor,
+                )
+            except Exception:
+                warnings.warn(
+                    "numba compilation/execution failed for time bars. "
+                    "Falling back to the Python path."
+                )
+                return self._batch_python(timestamps, prices, volumes, sides)
+        elif isinstance(estimator, EWMAThresholdEstimator):
+            # Adaptive threshold — use the EWMA-aware numba path
+            try:
+                bar_data, bt = numba_batch_ewma(
+                    bar_type=bar_type,
+                    timestamps=timestamps,
+                    prices=prices,
+                    volumes=volumes,
+                    sides=sides,
+                    alpha=estimator.alpha,
+                    initial_ewa_t=estimator.ewa_t,
+                    initial_ewa_proportion=estimator.ewa_proportion,
+                )
+            except Exception:
+                warnings.warn(
+                    f"numba compilation/execution failed for {bar_type}. "
+                    "Falling back to the Python path."
+                )
+                return self._batch_python(timestamps, prices, volumes, sides)
+        else:
+            # Static threshold (standard bars or info-driven bars with fixed threshold)
+            threshold = estimator.current_threshold
+            try:
+                bar_data, bt = numba_batch_static(
+                    bar_type=bar_type,
+                    timestamps=timestamps,
+                    prices=prices,
+                    volumes=volumes,
+                    sides=sides if bar_type.startswith(("imbalance_", "run_")) else None,
+                    threshold=threshold,
+                )
+            except Exception:
+                warnings.warn(
+                    f"numba compilation/execution failed for {bar_type}. "
+                    "Falling back to the Python path."
+                )
+                return self._batch_python(timestamps, prices, volumes, sides)
+
+        # ── warmup slicing ─────────────────────────────────────────────
+        warmup = self._warmup_bars
+        if warmup > 0 and len(bar_data) > 0:
+            bar_data = bar_data[warmup:]
+            # Re-number bar_ids after warmup
+            if len(bar_data) > 0:
+                bar_data[:, 0] = np.arange(len(bar_data), dtype=np.float64)
+
+        # ── convert to DataFrame ───────────────────────────────────────
+        if len(bar_data) == 0:
+            return pd.DataFrame(
+                columns=[
+                    "bar_id", "open", "high", "low", "close", "volume",
+                    "dollar_value", "vwap", "num_ticks", "open_ts", "close_ts",
+                    "bar_type",
+                ]
+            )
+
+        cols = _bar_data_to_columns(bar_data)
+        cols["bar_type"] = bt
+        result = pd.DataFrame(cols)
+
+        # ── fire callbacks ─────────────────────────────────────────────
+        if self._on_bar is not None:
+            for _, row in result.iterrows():
+                bar = Bar(
+                    bar_id=int(row["bar_id"]),
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=float(row["volume"]),
+                    dollar_value=float(row["dollar_value"]),
+                    vwap=float(row["vwap"]),
+                    num_ticks=int(row["num_ticks"]),
+                    open_ts=int(row["open_ts"]),
+                    close_ts=int(row["close_ts"]),
+                    bar_type=bt,
+                )
+                self._on_bar(bar)
+
+        return result
+
+    def _batch_python(
+        self,
+        timestamps: np.ndarray,
+        prices: np.ndarray,
+        volumes: np.ndarray,
+        sides: np.ndarray,
+    ) -> pd.DataFrame:
+        """Pure-Python batch loop — used as the fallback from :meth:`_batch_numba`."""
+        bars: list[Bar] = []
+        n = len(timestamps)
+        for i in range(n):
+            raw_side = sides[i]
+            tick = TickInfo(
+                timestamp=int(timestamps[i]),
+                price=float(prices[i]),
+                volume=float(volumes[i]),
+                side=float(raw_side) if not np.isnan(raw_side) else None,
+            )
+            bar_result = self.update(tick)
+            if bar_result is not None:
+                bars.append(bar_result)
+
+        # Drain remaining pending bars
+        while self._pending_bars:
+            bars.append(self._pending_bars.popleft())
+
+        if not bars:
+            return pd.DataFrame(
+                columns=[
+                    "bar_id", "open", "high", "low", "close", "volume",
+                    "dollar_value", "vwap", "num_ticks", "open_ts", "close_ts",
+                    "bar_type",
+                ]
+            )
+
+        return pd.DataFrame(
+            [
+                {
+                    "bar_id": b.bar_id,
+                    "open": b.open,
+                    "high": b.high,
+                    "low": b.low,
+                    "close": b.close,
+                    "volume": b.volume,
+                    "dollar_value": b.dollar_value,
+                    "vwap": b.vwap,
+                    "num_ticks": b.num_ticks,
+                    "open_ts": b.open_ts,
+                    "close_ts": b.close_ts,
+                    "bar_type": b.bar_type,
+                }
+                for b in bars
+            ]
+        )
+
     # ── read-only accessors ─────────────────────────────────────────────
 
     @property
@@ -257,6 +476,7 @@ class BaseBarConstructor:
             "schema_version": 1,
             "stream_id": self._stream_id,
             "bar_type": self._accumulator._bar_type,
+            "backend": self._backend,
             "accumulator": self._accumulator.get_state(),
             "threshold_estimator": self._threshold_estimator.get_state(),
             "bars_emitted": self._bars_emitted,
@@ -302,6 +522,10 @@ class BaseBarConstructor:
         self._threshold_estimator.load_state(state["threshold_estimator"])
         self._bars_emitted = state.get("bars_emitted", 0)
         self._in_session = state.get("in_session", True)
+        # Restore backend if present (new in state schema v1, added in Phase 9)
+        saved_backend = state.get("backend", "python")
+        if saved_backend in ("python", "numba"):
+            self._backend = saved_backend
 
         # Clear any pending bars (they should have been drained before saving)
         self._pending_bars.clear()
@@ -340,6 +564,9 @@ class BaseBarConstructor:
         """
         stream_id = state["stream_id"]
         warmup_bars = 0  # warmup is user-specified, not persisted
+        backend = state.get("backend", "python")
+        if backend not in ("python", "numba"):
+            backend = "python"
         inst = cls(
             accumulator=accumulator,
             threshold_estimator=threshold_estimator,
@@ -347,6 +574,7 @@ class BaseBarConstructor:
             schema=schema,
             stream_id=stream_id,
             warmup_bars=warmup_bars,
+            backend=backend,  # type: ignore[call-arg]
         )
         inst.load_state(state)
         return inst
