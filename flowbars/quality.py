@@ -62,7 +62,7 @@ def bar_quality_report(
     # Accept both pandas and polars DataFrames.  We use pandas internally
     # because the bar pipeline already returns pandas.
     try:
-        import polars as pl  # noqa: PLC0415
+        import polars as pl  # type: ignore  # noqa: PLC0415
     except ImportError:
         pl = None  # type: ignore[assignment]
 

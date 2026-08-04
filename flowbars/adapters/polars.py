@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import polars as pl
+import polars as pl  # type: ignore
 
 # Import pandas compute functions with _pd_ prefix to avoid
 # shadowing the polars functions defined in this module.
