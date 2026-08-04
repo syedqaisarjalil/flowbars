@@ -286,7 +286,8 @@ class BaseBarConstructor:
         if isinstance(self._calendar, SessionCalendar):
             warnings.warn(
                 "SessionCalendar is not supported by the numba backend. "
-                "Falling back to the Python path."
+                "Falling back to the Python path.",
+                stacklevel=2,
             )
             return self._batch_python(timestamps, prices, volumes, sides)
 
@@ -313,7 +314,8 @@ class BaseBarConstructor:
             except Exception:
                 warnings.warn(
                     "numba compilation/execution failed for time bars. "
-                    "Falling back to the Python path."
+                    "Falling back to the Python path.",
+                    stacklevel=2,
                 )
                 return self._batch_python(timestamps, prices, volumes, sides)
         elif isinstance(estimator, EWMAThresholdEstimator):
@@ -332,7 +334,8 @@ class BaseBarConstructor:
             except Exception:
                 warnings.warn(
                     f"numba compilation/execution failed for {bar_type}. "
-                    "Falling back to the Python path."
+                    "Falling back to the Python path.",
+                    stacklevel=2,
                 )
                 return self._batch_python(timestamps, prices, volumes, sides)
         else:
@@ -350,7 +353,8 @@ class BaseBarConstructor:
             except Exception:
                 warnings.warn(
                     f"numba compilation/execution failed for {bar_type}. "
-                    "Falling back to the Python path."
+                    "Falling back to the Python path.",
+                    stacklevel=2,
                 )
                 return self._batch_python(timestamps, prices, volumes, sides)
 

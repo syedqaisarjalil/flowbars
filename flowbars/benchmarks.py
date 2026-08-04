@@ -301,8 +301,8 @@ def run_benchmarks() -> None:
     print("flowbars benchmark")
     print(f"  Ticks:        {_N_TICKS:,}")
     print(f"  numba:        {'available' if has_numba else 'NOT AVAILABLE'}")
-    print(f"  Warm-up:      1 dry run (excluded from timing)")
-    print(f"  Timed runs:   5 (mean reported)")
+    print("  Warm-up:      1 dry run (excluded from timing)")
+    print("  Timed runs:   5 (mean reported)")
     print("=" * 78)
     print()
 
@@ -319,7 +319,7 @@ def run_benchmarks() -> None:
     configs = _bench_configs()
     py_baseline: dict[str, float] = {}  # label → mean python time
 
-    for label, acc_fn, est_fn, opts in configs:
+    for label, acc_fn, est_fn, _opts in configs:
         schema = SchemaMapping(
             {"timestamp": "timestamp", "price": "price", "volume": "volume", "side": "side"}
         )

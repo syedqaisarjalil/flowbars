@@ -1199,5 +1199,6 @@ def _get_compilation_warning() -> None:
     if not _NUMBA_AVAILABLE:
         warnings.warn(
             "numba is not installed. The numba backend will fall back to the "
-            "Python path. Install with: pip install flowbars[numba]"
+            "Python path. Install with: pip install flowbars[numba]",
+            stacklevel=3,
         )
