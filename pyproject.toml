@@ -40,8 +40,9 @@ dev = [
     "mypy>=1",
     "ruff",
 ]
+quality = ["scipy>=1.9"]
 all = [
-    "flowbars[numba,polars]",
+    "flowbars[numba,polars,quality]",
 ]
 
 [project.urls]
@@ -53,7 +54,7 @@ packages = {find = {where = ["."], include = ["flowbars*"]}}
 include-package-data = true
 
 [tool.setuptools.package-data]
-flowbars = ["py.typed"]
+flowbars = ["py.typed", "sample_data/*.csv"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
