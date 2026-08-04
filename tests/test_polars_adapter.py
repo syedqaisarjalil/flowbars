@@ -170,10 +170,14 @@ class TestPolarsStandardBars:
     def test_time_bars_first_tick_anchor(self) -> None:
         pd_ticks = _make_tick_data(n=500, with_side=False)
         schema = _default_schema(has_side=False)
-        pd_result = pd_compute_time_bars(pd_ticks, interval_ms=30_000, anchor="first_tick", schema=schema)
+        pd_result = pd_compute_time_bars(
+            pd_ticks, interval_ms=30_000, anchor="first_tick", schema=schema
+        )
 
         pl_ticks = pl.from_pandas(pd_ticks)
-        pl_result = compute_time_bars(pl_ticks, interval_ms=30_000, anchor="first_tick", schema=schema)
+        pl_result = compute_time_bars(
+            pl_ticks, interval_ms=30_000, anchor="first_tick", schema=schema
+        )
 
         assert isinstance(pl_result, pl.DataFrame)
         assert _bars_equal(pd_result, pl_result.to_pandas())
@@ -191,12 +195,18 @@ class TestPolarsImbalanceBars:
         pd_ticks = _make_tick_data(n=1000, with_side=True)
         schema = _default_schema(has_side=True)
         pd_result = pd_compute_imbalance_tick_bars(
-            pd_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pd_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         pl_ticks = pl.from_pandas(pd_ticks)
         pl_result = compute_imbalance_tick_bars(
-            pl_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pl_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         assert isinstance(pl_result, pl.DataFrame)
@@ -206,12 +216,18 @@ class TestPolarsImbalanceBars:
         pd_ticks = _make_tick_data(n=1000, with_side=True)
         schema = _default_schema(has_side=True)
         pd_result = pd_compute_imbalance_volume_bars(
-            pd_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pd_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         pl_ticks = pl.from_pandas(pd_ticks)
         pl_result = compute_imbalance_volume_bars(
-            pl_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pl_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         assert isinstance(pl_result, pl.DataFrame)
@@ -221,12 +237,18 @@ class TestPolarsImbalanceBars:
         pd_ticks = _make_tick_data(n=1000, with_side=True)
         schema = _default_schema(has_side=True)
         pd_result = pd_compute_imbalance_dollar_bars(
-            pd_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pd_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         pl_ticks = pl.from_pandas(pd_ticks)
         pl_result = compute_imbalance_dollar_bars(
-            pl_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pl_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         assert isinstance(pl_result, pl.DataFrame)
@@ -245,12 +267,18 @@ class TestPolarsRunBars:
         pd_ticks = _make_tick_data(n=1000, with_side=True)
         schema = _default_schema(has_side=True)
         pd_result = pd_compute_run_tick_bars(
-            pd_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pd_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         pl_ticks = pl.from_pandas(pd_ticks)
         pl_result = compute_run_tick_bars(
-            pl_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pl_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         assert isinstance(pl_result, pl.DataFrame)
@@ -260,12 +288,18 @@ class TestPolarsRunBars:
         pd_ticks = _make_tick_data(n=1000, with_side=True)
         schema = _default_schema(has_side=True)
         pd_result = pd_compute_run_volume_bars(
-            pd_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pd_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         pl_ticks = pl.from_pandas(pd_ticks)
         pl_result = compute_run_volume_bars(
-            pl_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pl_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         assert isinstance(pl_result, pl.DataFrame)
@@ -275,12 +309,18 @@ class TestPolarsRunBars:
         pd_ticks = _make_tick_data(n=1000, with_side=True)
         schema = _default_schema(has_side=True)
         pd_result = pd_compute_run_dollar_bars(
-            pd_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pd_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         pl_ticks = pl.from_pandas(pd_ticks)
         pl_result = compute_run_dollar_bars(
-            pl_ticks, span=20.0, warmup_bars=1, schema=schema,
+            pl_ticks,
+            span=20.0,
+            warmup_bars=1,
+            schema=schema,
         )
 
         assert isinstance(pl_result, pl.DataFrame)
@@ -330,12 +370,20 @@ class TestPolarsEdgeCases:
         pd_ticks = _make_tick_data(n=1000, with_side=True)
         schema = _default_schema(has_side=True)
         pd_result = pd_compute_run_tick_bars(
-            pd_ticks, span=20.0, warmup_bars=0, min_run_length=3, schema=schema,
+            pd_ticks,
+            span=20.0,
+            warmup_bars=0,
+            min_run_length=3,
+            schema=schema,
         )
 
         pl_ticks = pl.from_pandas(pd_ticks)
         pl_result = compute_run_tick_bars(
-            pl_ticks, span=20.0, warmup_bars=0, min_run_length=3, schema=schema,
+            pl_ticks,
+            span=20.0,
+            warmup_bars=0,
+            min_run_length=3,
+            schema=schema,
         )
 
         assert isinstance(pl_result, pl.DataFrame)
@@ -346,12 +394,18 @@ class TestPolarsEdgeCases:
         pd_ticks = _make_tick_data(n=10_000, with_side=True)
         schema = _default_schema(has_side=True)
         pd_result = pd_compute_imbalance_tick_bars(
-            pd_ticks, span=20.0, warmup_bars=2, schema=schema,
+            pd_ticks,
+            span=20.0,
+            warmup_bars=2,
+            schema=schema,
         )
 
         pl_ticks = pl.from_pandas(pd_ticks)
         pl_result = compute_imbalance_tick_bars(
-            pl_ticks, span=20.0, warmup_bars=2, schema=schema,
+            pl_ticks,
+            span=20.0,
+            warmup_bars=2,
+            schema=schema,
         )
 
         assert isinstance(pl_result, pl.DataFrame)

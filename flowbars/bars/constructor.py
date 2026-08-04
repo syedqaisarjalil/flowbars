@@ -370,8 +370,17 @@ class BaseBarConstructor:
         if len(bar_data) == 0:
             return pd.DataFrame(
                 columns=[
-                    "bar_id", "open", "high", "low", "close", "volume",
-                    "dollar_value", "vwap", "num_ticks", "open_ts", "close_ts",
+                    "bar_id",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "dollar_value",
+                    "vwap",
+                    "num_ticks",
+                    "open_ts",
+                    "close_ts",
                     "bar_type",
                 ]
             )
@@ -430,8 +439,17 @@ class BaseBarConstructor:
         if not bars:
             return pd.DataFrame(
                 columns=[
-                    "bar_id", "open", "high", "low", "close", "volume",
-                    "dollar_value", "vwap", "num_ticks", "open_ts", "close_ts",
+                    "bar_id",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "dollar_value",
+                    "vwap",
+                    "num_ticks",
+                    "open_ts",
+                    "close_ts",
                     "bar_type",
                 ]
             )

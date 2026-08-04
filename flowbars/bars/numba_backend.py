@@ -1069,12 +1069,16 @@ def numba_batch_static(
         )
         return bar_data, "time"
 
-    if bar_type in ("imbalance_tick", "imbalance_volume", "imbalance_dollar",
-                     "run_tick", "run_volume", "run_dollar"):
+    if bar_type in (
+        "imbalance_tick",
+        "imbalance_volume",
+        "imbalance_dollar",
+        "run_tick",
+        "run_volume",
+        "run_dollar",
+    ):
         if sides is None:
-            raise ValueError(
-                f"Bar type {bar_type!r} requires side/direction information."
-            )
+            raise ValueError(f"Bar type {bar_type!r} requires side/direction information.")
         # Map bar_type to metric_code
         if "tick" in bar_type:
             metric_code = 0
@@ -1155,9 +1159,7 @@ def numba_batch_ewma(
     bar_type_str : str
     """
     if sides is None:
-        raise ValueError(
-            f"Bar type {bar_type!r} requires side/direction information."
-        )
+        raise ValueError(f"Bar type {bar_type!r} requires side/direction information.")
 
     if "tick" in bar_type:
         metric_code = 0

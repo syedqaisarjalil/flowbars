@@ -124,7 +124,9 @@ def compute_volume_bars(
         Completed bars.
     """
     pd_ticks = ticks_df.to_pandas()
-    pd_bars = _pd_compute_volume_bars(pd_ticks, threshold=threshold, schema=schema, calendar=calendar)
+    pd_bars = _pd_compute_volume_bars(
+        pd_ticks, threshold=threshold, schema=schema, calendar=calendar
+    )
     return pl.from_pandas(pd_bars)
 
 
@@ -151,7 +153,9 @@ def compute_dollar_bars(
         Completed bars.
     """
     pd_ticks = ticks_df.to_pandas()
-    pd_bars = _pd_compute_dollar_bars(pd_ticks, threshold=threshold, schema=schema, calendar=calendar)
+    pd_bars = _pd_compute_dollar_bars(
+        pd_ticks, threshold=threshold, schema=schema, calendar=calendar
+    )
     return pl.from_pandas(pd_bars)
 
 

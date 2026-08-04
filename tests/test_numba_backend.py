@@ -323,9 +323,14 @@ class TestImbalanceBarsStaticThreshold:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(20_000, seed=42)
         threshold = 50.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         # Python
         acc = ImbalanceAccumulator(bar_type="imbalance_tick", metric="tick")
@@ -336,7 +341,9 @@ class TestImbalanceBarsStaticThreshold:
         # numba
         acc2 = ImbalanceAccumulator(bar_type="imbalance_tick", metric="tick")
         est2 = StaticThresholdEstimator(threshold=threshold)
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars), (
@@ -349,9 +356,14 @@ class TestImbalanceBarsStaticThreshold:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(20_000, seed=43)
         threshold = 1000.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         acc = ImbalanceAccumulator(bar_type="imbalance_volume", metric="volume")
         est = StaticThresholdEstimator(threshold=threshold)
@@ -360,7 +372,9 @@ class TestImbalanceBarsStaticThreshold:
 
         acc2 = ImbalanceAccumulator(bar_type="imbalance_volume", metric="volume")
         est2 = StaticThresholdEstimator(threshold=threshold)
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars)
@@ -371,9 +385,14 @@ class TestImbalanceBarsStaticThreshold:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(20_000, seed=44)
         threshold = 100_000.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         acc = ImbalanceAccumulator(bar_type="imbalance_dollar", metric="dollar")
         est = StaticThresholdEstimator(threshold=threshold)
@@ -382,7 +401,9 @@ class TestImbalanceBarsStaticThreshold:
 
         acc2 = ImbalanceAccumulator(bar_type="imbalance_dollar", metric="dollar")
         est2 = StaticThresholdEstimator(threshold=threshold)
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars)
@@ -397,9 +418,14 @@ class TestRunBarsStaticThreshold:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(20_000, seed=55)
         threshold = 30.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         acc = RunAccumulator(bar_type="run_tick", metric="tick")
         est = StaticThresholdEstimator(threshold=threshold)
@@ -408,7 +434,9 @@ class TestRunBarsStaticThreshold:
 
         acc2 = RunAccumulator(bar_type="run_tick", metric="tick")
         est2 = StaticThresholdEstimator(threshold=threshold)
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars), (
@@ -421,9 +449,14 @@ class TestRunBarsStaticThreshold:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(20_000, seed=56)
         threshold = 1000.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         acc = RunAccumulator(bar_type="run_volume", metric="volume")
         est = StaticThresholdEstimator(threshold=threshold)
@@ -432,7 +465,9 @@ class TestRunBarsStaticThreshold:
 
         acc2 = RunAccumulator(bar_type="run_volume", metric="volume")
         est2 = StaticThresholdEstimator(threshold=threshold)
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars)
@@ -443,9 +478,14 @@ class TestRunBarsStaticThreshold:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(20_000, seed=57)
         threshold = 100_000.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         acc = RunAccumulator(bar_type="run_dollar", metric="dollar")
         est = StaticThresholdEstimator(threshold=threshold)
@@ -454,7 +494,9 @@ class TestRunBarsStaticThreshold:
 
         acc2 = RunAccumulator(bar_type="run_dollar", metric="dollar")
         est2 = StaticThresholdEstimator(threshold=threshold)
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars)
@@ -474,15 +516,22 @@ class TestImbalanceBarsEWMA:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(30_000, seed=99)
         span = 20.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         # Python
         acc = ImbalanceAccumulator(bar_type="imbalance_tick", metric="tick")
         est = EWMAThresholdEstimator(
-            bar_family="imbalance", span=span,
-            initial_ewa_t=1.0, initial_ewa_proportion=0.5,
+            bar_family="imbalance",
+            span=span,
+            initial_ewa_t=1.0,
+            initial_ewa_proportion=0.5,
         )
         ctor = BaseBarConstructor(acc, est, schema=default_schema(has_side=True), backend="python")
         py_bars = ctor.batch(df)
@@ -490,10 +539,14 @@ class TestImbalanceBarsEWMA:
         # numba with EWMA
         acc2 = ImbalanceAccumulator(bar_type="imbalance_tick", metric="tick")
         est2 = EWMAThresholdEstimator(
-            bar_family="imbalance", span=span,
-            initial_ewa_t=1.0, initial_ewa_proportion=0.5,
+            bar_family="imbalance",
+            span=span,
+            initial_ewa_t=1.0,
+            initial_ewa_proportion=0.5,
         )
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars), (
@@ -506,24 +559,35 @@ class TestImbalanceBarsEWMA:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(30_000, seed=100)
         span = 15.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         acc = ImbalanceAccumulator(bar_type="imbalance_volume", metric="volume")
         est = EWMAThresholdEstimator(
-            bar_family="imbalance", span=span,
-            initial_ewa_t=100.0, initial_ewa_proportion=0.3,
+            bar_family="imbalance",
+            span=span,
+            initial_ewa_t=100.0,
+            initial_ewa_proportion=0.3,
         )
         ctor = BaseBarConstructor(acc, est, schema=default_schema(has_side=True), backend="python")
         py_bars = ctor.batch(df)
 
         acc2 = ImbalanceAccumulator(bar_type="imbalance_volume", metric="volume")
         est2 = EWMAThresholdEstimator(
-            bar_family="imbalance", span=span,
-            initial_ewa_t=100.0, initial_ewa_proportion=0.3,
+            bar_family="imbalance",
+            span=span,
+            initial_ewa_t=100.0,
+            initial_ewa_proportion=0.3,
         )
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars)
@@ -534,24 +598,35 @@ class TestImbalanceBarsEWMA:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(30_000, seed=101)
         span = 10.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         acc = ImbalanceAccumulator(bar_type="imbalance_dollar", metric="dollar")
         est = EWMAThresholdEstimator(
-            bar_family="imbalance", span=span,
-            initial_ewa_t=10000.0, initial_ewa_proportion=0.4,
+            bar_family="imbalance",
+            span=span,
+            initial_ewa_t=10000.0,
+            initial_ewa_proportion=0.4,
         )
         ctor = BaseBarConstructor(acc, est, schema=default_schema(has_side=True), backend="python")
         py_bars = ctor.batch(df)
 
         acc2 = ImbalanceAccumulator(bar_type="imbalance_dollar", metric="dollar")
         est2 = EWMAThresholdEstimator(
-            bar_family="imbalance", span=span,
-            initial_ewa_t=10000.0, initial_ewa_proportion=0.4,
+            bar_family="imbalance",
+            span=span,
+            initial_ewa_t=10000.0,
+            initial_ewa_proportion=0.4,
         )
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars)
@@ -566,24 +641,35 @@ class TestRunBarsEWMA:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(30_000, seed=150)
         span = 15.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         acc = RunAccumulator(bar_type="run_tick", metric="tick")
         est = EWMAThresholdEstimator(
-            bar_family="run", span=span,
-            initial_ewa_t=30.0, initial_ewa_proportion=0.5,
+            bar_family="run",
+            span=span,
+            initial_ewa_t=30.0,
+            initial_ewa_proportion=0.5,
         )
         ctor = BaseBarConstructor(acc, est, schema=default_schema(has_side=True), backend="python")
         py_bars = ctor.batch(df)
 
         acc2 = RunAccumulator(bar_type="run_tick", metric="tick")
         est2 = EWMAThresholdEstimator(
-            bar_family="run", span=span,
-            initial_ewa_t=30.0, initial_ewa_proportion=0.5,
+            bar_family="run",
+            span=span,
+            initial_ewa_t=30.0,
+            initial_ewa_proportion=0.5,
         )
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars)
@@ -594,24 +680,35 @@ class TestRunBarsEWMA:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(30_000, seed=151)
         span = 20.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         acc = RunAccumulator(bar_type="run_volume", metric="volume")
         est = EWMAThresholdEstimator(
-            bar_family="run", span=span,
-            initial_ewa_t=1000.0, initial_ewa_proportion=0.5,
+            bar_family="run",
+            span=span,
+            initial_ewa_t=1000.0,
+            initial_ewa_proportion=0.5,
         )
         ctor = BaseBarConstructor(acc, est, schema=default_schema(has_side=True), backend="python")
         py_bars = ctor.batch(df)
 
         acc2 = RunAccumulator(bar_type="run_volume", metric="volume")
         est2 = EWMAThresholdEstimator(
-            bar_family="run", span=span,
-            initial_ewa_t=1000.0, initial_ewa_proportion=0.5,
+            bar_family="run",
+            span=span,
+            initial_ewa_t=1000.0,
+            initial_ewa_proportion=0.5,
         )
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars)
@@ -622,24 +719,35 @@ class TestRunBarsEWMA:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(30_000, seed=152)
         span = 12.0
 
-        df = pd.DataFrame({
-            "ts": timestamps, "px": prices, "vol": volumes, "side": sides,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": timestamps,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
 
         acc = RunAccumulator(bar_type="run_dollar", metric="dollar")
         est = EWMAThresholdEstimator(
-            bar_family="run", span=span,
-            initial_ewa_t=100000.0, initial_ewa_proportion=0.5,
+            bar_family="run",
+            span=span,
+            initial_ewa_t=100000.0,
+            initial_ewa_proportion=0.5,
         )
         ctor = BaseBarConstructor(acc, est, schema=default_schema(has_side=True), backend="python")
         py_bars = ctor.batch(df)
 
         acc2 = RunAccumulator(bar_type="run_dollar", metric="dollar")
         est2 = EWMAThresholdEstimator(
-            bar_family="run", span=span,
-            initial_ewa_t=100000.0, initial_ewa_proportion=0.5,
+            bar_family="run",
+            span=span,
+            initial_ewa_t=100000.0,
+            initial_ewa_proportion=0.5,
         )
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(has_side=True), backend="numba")
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(has_side=True), backend="numba"
+        )
         nb_bars = ctor2.batch(df)
 
         assert len(py_bars) == len(nb_bars)
@@ -663,8 +771,20 @@ class TestNumbaEdgeCases:
         result = ctor.batch(df)
         assert len(result) == 0
         # Should have all expected columns
-        for col in ["bar_id", "open", "high", "low", "close", "volume",
-                     "dollar_value", "vwap", "num_ticks", "open_ts", "close_ts", "bar_type"]:
+        for col in [
+            "bar_id",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "dollar_value",
+            "vwap",
+            "num_ticks",
+            "open_ts",
+            "close_ts",
+            "bar_type",
+        ]:
             assert col in result.columns
 
     def test_single_tick_no_bar(self) -> None:
@@ -707,7 +827,9 @@ class TestNumbaEdgeCases:
         # With warmup=2
         acc2 = TickAccumulator()
         est2 = StaticThresholdEstimator(threshold=threshold)
-        ctor2 = BaseBarConstructor(acc2, est2, schema=default_schema(), backend="numba", warmup_bars=2)
+        ctor2 = BaseBarConstructor(
+            acc2, est2, schema=default_schema(), backend="numba", warmup_bars=2
+        )
         warm_bars = ctor2.batch(df)
 
         assert len(warm_bars) == len(all_bars) - 2
@@ -767,10 +889,7 @@ class TestNumbaEdgeCases:
             # Should produce bars via Python fallback
             assert len(result) >= 0  # Produces output rather than crashing
             # Should have emitted a warning about SessionCalendar
-            session_warnings = [
-                x for x in w
-                if "SessionCalendar" in str(x.message)
-            ]
+            session_warnings = [x for x in w if "SessionCalendar" in str(x.message)]
             assert len(session_warnings) >= 1
 
     def test_backend_python_produces_same_as_numba_default(self) -> None:
@@ -938,8 +1057,14 @@ class TestNumbaBatchWrappers:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(5000, seed=200)
 
         bar_data, bt = numba_batch_ewma(
-            "imbalance_tick", timestamps, prices, volumes, sides,
-            alpha=0.1, initial_ewa_t=10.0, initial_ewa_proportion=0.3,
+            "imbalance_tick",
+            timestamps,
+            prices,
+            volumes,
+            sides,
+            alpha=0.1,
+            initial_ewa_t=10.0,
+            initial_ewa_proportion=0.3,
         )
         assert bt == "imbalance_tick"
         assert bar_data.shape[1] == 11
@@ -950,8 +1075,14 @@ class TestNumbaBatchWrappers:
         timestamps, prices, volumes, sides = _generate_tick_data_with_sides(5000, seed=201)
 
         bar_data, bt = numba_batch_ewma(
-            "run_tick", timestamps, prices, volumes, sides,
-            alpha=0.1, initial_ewa_t=10.0, initial_ewa_proportion=0.5,
+            "run_tick",
+            timestamps,
+            prices,
+            volumes,
+            sides,
+            alpha=0.1,
+            initial_ewa_t=10.0,
+            initial_ewa_proportion=0.5,
         )
         assert bt == "run_tick"
         assert bar_data.shape[1] == 11

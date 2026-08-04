@@ -196,10 +196,12 @@ class TestBarCountStability:
         """Uneven bar counts → CV > 0."""
         n = 50
         # 2 days: 20 bars on day 1, 30 on day 2
-        open_ts = np.concatenate([
-            np.full(20, 0, dtype=np.int64),
-            np.full(30, 86_400_000, dtype=np.int64),
-        ])
+        open_ts = np.concatenate(
+            [
+                np.full(20, 0, dtype=np.int64),
+                np.full(30, 86_400_000, dtype=np.int64),
+            ]
+        )
         bars = _make_bars(n=n, open_ts=open_ts)
         report = bar_quality_report(bars)
         stability = report["bar_count_stability"]
@@ -304,8 +306,11 @@ class TestResultStructure:
         bars = _make_bars(n=50, bar_type="imbalance_tick")
         report = bar_quality_report(bars)
         expected_keys = {
-            "n_bars", "ljung_box", "jarque_bera",
-            "bar_count_stability", "run_fragmentation",
+            "n_bars",
+            "ljung_box",
+            "jarque_bera",
+            "bar_count_stability",
+            "run_fragmentation",
         }
         assert set(report.keys()) == expected_keys
 

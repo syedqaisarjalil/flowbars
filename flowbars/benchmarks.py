@@ -202,88 +202,116 @@ def _bench_configs() -> list[BenchConfig]:
     configs: list[BenchConfig] = []
 
     # Standard bars (static threshold)
-    configs.append((
-        "tick",
-        lambda: TickAccumulator(),
-        lambda: StaticThresholdEstimator(threshold=100.0),
-        {},
-    ))
-    configs.append((
-        "volume",
-        lambda: VolumeAccumulator(),
-        lambda: StaticThresholdEstimator(threshold=5000.0),
-        {},
-    ))
-    configs.append((
-        "dollar",
-        lambda: DollarAccumulator(),
-        lambda: StaticThresholdEstimator(threshold=250_000.0),
-        {},
-    ))
-    configs.append((
-        "time (5-min)",
-        lambda: TimeAccumulator(interval_ms=300000),
-        lambda: StaticThresholdEstimator(threshold=0.0),
-        {"time_special": True},
-    ))
+    configs.append(
+        (
+            "tick",
+            lambda: TickAccumulator(),
+            lambda: StaticThresholdEstimator(threshold=100.0),
+            {},
+        )
+    )
+    configs.append(
+        (
+            "volume",
+            lambda: VolumeAccumulator(),
+            lambda: StaticThresholdEstimator(threshold=5000.0),
+            {},
+        )
+    )
+    configs.append(
+        (
+            "dollar",
+            lambda: DollarAccumulator(),
+            lambda: StaticThresholdEstimator(threshold=250_000.0),
+            {},
+        )
+    )
+    configs.append(
+        (
+            "time (5-min)",
+            lambda: TimeAccumulator(interval_ms=300000),
+            lambda: StaticThresholdEstimator(threshold=0.0),
+            {"time_special": True},
+        )
+    )
 
     # Information-driven bars (static threshold — baseline)
-    configs.append((
-        "imbalance_tick (static)",
-        lambda: ImbalanceAccumulator(bar_type="imbalance_tick", metric="tick"),
-        lambda: StaticThresholdEstimator(threshold=30.0),
-        {},
-    ))
-    configs.append((
-        "imbalance_volume (static)",
-        lambda: ImbalanceAccumulator(bar_type="imbalance_volume", metric="volume"),
-        lambda: StaticThresholdEstimator(threshold=50.0),
-        {},
-    ))
-    configs.append((
-        "imbalance_dollar (static)",
-        lambda: ImbalanceAccumulator(bar_type="imbalance_dollar", metric="dollar"),
-        lambda: StaticThresholdEstimator(threshold=100_000.0),
-        {},
-    ))
-    configs.append((
-        "run_tick (static)",
-        lambda: RunAccumulator(bar_type="run_tick", metric="tick"),
-        lambda: StaticThresholdEstimator(threshold=30.0),
-        {},
-    ))
-    configs.append((
-        "run_volume (static)",
-        lambda: RunAccumulator(bar_type="run_volume", metric="volume"),
-        lambda: StaticThresholdEstimator(threshold=2000.0),
-        {},
-    ))
-    configs.append((
-        "run_dollar (static)",
-        lambda: RunAccumulator(bar_type="run_dollar", metric="dollar"),
-        lambda: StaticThresholdEstimator(threshold=100_000.0),
-        {},
-    ))
+    configs.append(
+        (
+            "imbalance_tick (static)",
+            lambda: ImbalanceAccumulator(bar_type="imbalance_tick", metric="tick"),
+            lambda: StaticThresholdEstimator(threshold=30.0),
+            {},
+        )
+    )
+    configs.append(
+        (
+            "imbalance_volume (static)",
+            lambda: ImbalanceAccumulator(bar_type="imbalance_volume", metric="volume"),
+            lambda: StaticThresholdEstimator(threshold=50.0),
+            {},
+        )
+    )
+    configs.append(
+        (
+            "imbalance_dollar (static)",
+            lambda: ImbalanceAccumulator(bar_type="imbalance_dollar", metric="dollar"),
+            lambda: StaticThresholdEstimator(threshold=100_000.0),
+            {},
+        )
+    )
+    configs.append(
+        (
+            "run_tick (static)",
+            lambda: RunAccumulator(bar_type="run_tick", metric="tick"),
+            lambda: StaticThresholdEstimator(threshold=30.0),
+            {},
+        )
+    )
+    configs.append(
+        (
+            "run_volume (static)",
+            lambda: RunAccumulator(bar_type="run_volume", metric="volume"),
+            lambda: StaticThresholdEstimator(threshold=2000.0),
+            {},
+        )
+    )
+    configs.append(
+        (
+            "run_dollar (static)",
+            lambda: RunAccumulator(bar_type="run_dollar", metric="dollar"),
+            lambda: StaticThresholdEstimator(threshold=100_000.0),
+            {},
+        )
+    )
 
     # Information-driven bars (EWMA threshold)
-    configs.append((
-        "imbalance_tick (EWMA)",
-        lambda: ImbalanceAccumulator(bar_type="imbalance_tick", metric="tick"),
-        lambda: EWMAThresholdEstimator(
-            bar_family="imbalance", span=20.0,
-            initial_ewa_t=5.0, initial_ewa_proportion=0.3,
-        ),
-        {},
-    ))
-    configs.append((
-        "run_tick (EWMA)",
-        lambda: RunAccumulator(bar_type="run_tick", metric="tick"),
-        lambda: EWMAThresholdEstimator(
-            bar_family="run", span=20.0,
-            initial_ewa_t=5.0, initial_ewa_proportion=0.5,
-        ),
-        {},
-    ))
+    configs.append(
+        (
+            "imbalance_tick (EWMA)",
+            lambda: ImbalanceAccumulator(bar_type="imbalance_tick", metric="tick"),
+            lambda: EWMAThresholdEstimator(
+                bar_family="imbalance",
+                span=20.0,
+                initial_ewa_t=5.0,
+                initial_ewa_proportion=0.3,
+            ),
+            {},
+        )
+    )
+    configs.append(
+        (
+            "run_tick (EWMA)",
+            lambda: RunAccumulator(bar_type="run_tick", metric="tick"),
+            lambda: EWMAThresholdEstimator(
+                bar_family="run",
+                span=20.0,
+                initial_ewa_t=5.0,
+                initial_ewa_proportion=0.5,
+            ),
+            {},
+        )
+    )
 
     return configs
 
@@ -307,8 +335,10 @@ def run_benchmarks() -> None:
     print()
 
     ticks_df = _generate_ticks(_N_TICKS)
-    print(f"  Synthetic data: {len(ticks_df):,} ticks, "
-          f"price range [{ticks_df['price'].min():.2f}, {ticks_df['price'].max():.2f}]")
+    print(
+        f"  Synthetic data: {len(ticks_df):,} ticks, "
+        f"price range [{ticks_df['price'].min():.2f}, {ticks_df['price'].max():.2f}]"
+    )
     print()
 
     # Header
@@ -344,7 +374,9 @@ def run_benchmarks() -> None:
         ctor_count = _clone_constructor(ctor_py, schema)
         n_bars = len(ctor_count.batch(ticks_df))
 
-        print(f"{label:<30s} {'python':>8s}  {n_bars:>8d}  {compile_py:>11.4f}  {mean_py:>10.4f}  {'1.00x':>8s}")
+        print(
+            f"{label:<30s} {'python':>8s}  {n_bars:>8d}  {compile_py:>11.4f}  {mean_py:>10.4f}  {'1.00x':>8s}"
+        )
 
         # numba backend
         if has_numba:
@@ -363,9 +395,13 @@ def run_benchmarks() -> None:
                     compile_nb, mean_nb = _time_batch(ctor_nb, ticks_df)
 
                 speedup = mean_py / mean_nb if mean_nb > 0.0 else float("inf")
-                print(f"{'':30s} {'numba':>8s}  {n_bars:>8d}  {compile_nb:>11.4f}  {mean_nb:>10.4f}  {speedup:>7.2f}x")
+                print(
+                    f"{'':30s} {'numba':>8s}  {n_bars:>8d}  {compile_nb:>11.4f}  {mean_nb:>10.4f}  {speedup:>7.2f}x"
+                )
             except Exception as e:
-                print(f"{'':30s} {'numba':>8s}  {'--':>8s}  {'--':>11s}  {'--':>10s}  {'FAILED':>8s}")
+                print(
+                    f"{'':30s} {'numba':>8s}  {'--':>8s}  {'--':>11s}  {'--':>10s}  {'FAILED':>8s}"
+                )
                 print(f"  [numba error: {e}]")
 
         print()

@@ -57,19 +57,30 @@ class TestQuickstart:
         df = load_sample_data()
         df["side"] = resolve_tick_signs(df["price"].values, None)
 
-        schema = SchemaMapping({
-            "timestamp": "timestamp",
-            "price": "price",
-            "volume": "volume",
-            "side": "side",
-        })
+        schema = SchemaMapping(
+            {
+                "timestamp": "timestamp",
+                "price": "price",
+                "volume": "volume",
+                "side": "side",
+            }
+        )
 
         bars = compute_tick_bars(df, threshold=50, schema=schema)
         assert len(bars) > 0
         assert set(bars.columns) == {
-            "bar_id", "open", "high", "low", "close",
-            "volume", "dollar_value", "vwap", "num_ticks",
-            "open_ts", "close_ts", "bar_type",
+            "bar_id",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "dollar_value",
+            "vwap",
+            "num_ticks",
+            "open_ts",
+            "close_ts",
+            "bar_type",
         }
         # Bars should be tick bars
         assert (bars["bar_type"] == "tick").all()
@@ -79,12 +90,14 @@ class TestQuickstart:
         df = load_sample_data()
         df["side"] = resolve_tick_signs(df["price"].values, None)
 
-        schema = SchemaMapping({
-            "timestamp": "timestamp",
-            "price": "price",
-            "volume": "volume",
-            "side": "side",
-        })
+        schema = SchemaMapping(
+            {
+                "timestamp": "timestamp",
+                "price": "price",
+                "volume": "volume",
+                "side": "side",
+            }
+        )
 
         bars = compute_imbalance_tick_bars(df, span=20.0, schema=schema)
         assert len(bars) > 0
@@ -94,11 +107,13 @@ class TestQuickstart:
         """Sample data works without a pre-supplied side column."""
         df = load_sample_data()
 
-        schema = SchemaMapping({
-            "timestamp": "timestamp",
-            "price": "price",
-            "volume": "volume",
-        })
+        schema = SchemaMapping(
+            {
+                "timestamp": "timestamp",
+                "price": "price",
+                "volume": "volume",
+            }
+        )
 
         bars = compute_tick_bars(df, threshold=100, schema=schema)
         assert len(bars) > 0
