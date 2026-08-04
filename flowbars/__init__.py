@@ -37,6 +37,9 @@ from flowbars.calendars import ContinuousCalendar, SessionCalendar, TradingCalen
 
 # Re-export the bar quality report
 from flowbars.quality import bar_quality_report
+
+# Sample data loader
+from flowbars.sample_data import load_sample_data
 from flowbars.schema import SchemaMapping
 from flowbars.thresholds import (
     EWMAThresholdEstimator,
@@ -67,6 +70,7 @@ __all__ = [
     "TradingCalendar",
     "VolumeBarConstructor",
     "bar_quality_report",
+    "load_sample_data",
     "compute_dollar_bars",
     "compute_imbalance_dollar_bars",
     "compute_imbalance_tick_bars",
