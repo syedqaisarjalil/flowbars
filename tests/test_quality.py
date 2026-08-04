@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import polars as pl
 import pytest
 
 from flowbars.quality import _autocorrelation, bar_quality_report
+
+try:
+    import polars as pl
+except ImportError:
+    pl = None
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Helpers
@@ -271,6 +275,7 @@ class TestRunFragmentation:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+@pytest.mark.skipif(pl is None, reason="polars not installed")
 class TestPolarsInput:
     def test_polars_produces_same_result(self) -> None:
         """Polars DataFrame input should match pandas input."""

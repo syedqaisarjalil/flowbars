@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Tests for Polars adapter — Phase 10.
 
 Equivalence tests: for each bar type, generate synthetic data as both
@@ -8,7 +9,9 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import polars as pl
+import pytest
+
+pl = pytest.importorskip("polars", reason="polars not installed")
 
 from flowbars.adapters.polars import (
     compute_dollar_bars,
