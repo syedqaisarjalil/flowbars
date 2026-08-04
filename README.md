@@ -41,7 +41,7 @@ Every bar constructor supports `update(tick)` for real-time streaming and
 
 ```python
 # Save mid-stream state
-state = ctor.get_state()   # plain dict, JSON-serializable
+state = ctor.get_state()  # plain dict, JSON-serializable
 
 # Resume later — identical output as uninterrupted
 ctor2 = TickBarConstructor.from_state(state)
@@ -164,7 +164,7 @@ pip install flowbars[all]             # everything
 from flowbars import load_sample_data, compute_tick_bars
 from flowbars.schema import SchemaMapping
 
-df = load_sample_data()   # 500 ticks with timestamp, price, volume
+df = load_sample_data()  # 500 ticks with timestamp, price, volume
 schema = SchemaMapping({"timestamp": "timestamp", "price": "price", "volume": "volume"})
 
 bars = compute_tick_bars(df, threshold=50, schema=schema)
@@ -178,7 +178,7 @@ import pandas as pd
 from flowbars import compute_dollar_bars
 from flowbars.schema import SchemaMapping
 
-ticks = pd.read_csv("my_ticks.csv")   # must have ts, px, qty columns
+ticks = pd.read_csv("my_ticks.csv")  # must have ts, px, qty columns
 schema = SchemaMapping({"timestamp": "ts", "price": "px", "volume": "qty"})
 
 bars = compute_dollar_bars(ticks, threshold=1_000_000, schema=schema)
@@ -191,14 +191,19 @@ from flowbars import compute_imbalance_tick_bars
 from flowbars.tick_rule import resolve_tick_signs
 
 df["side"] = resolve_tick_signs(df["price"].values, None)
-schema = SchemaMapping({
-    "timestamp": "ts", "price": "px", "volume": "qty", "side": "side",
-})
+schema = SchemaMapping(
+    {
+        "timestamp": "ts",
+        "price": "px",
+        "volume": "qty",
+        "side": "side",
+    }
+)
 
 bars = compute_imbalance_tick_bars(
     df,
-    span=20.0,            # EWMA span
-    warmup_bars=5,        # discard first 5 bars while EWMA converges
+    span=20.0,  # EWMA span
+    warmup_bars=5,  # discard first 5 bars while EWMA converges
     schema=schema,
 )
 ```
@@ -214,7 +219,7 @@ ctor = BaseBarConstructor(
     accumulator=TickAccumulator(bar_type="tick"),
     threshold_estimator=StaticThresholdEstimator(threshold=100),
     schema=schema,
-    backend="numba",        # flip this one switch
+    backend="numba",  # flip this one switch
 )
 bars = ctor.batch(ticks_df)
 ```
