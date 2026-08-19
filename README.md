@@ -9,7 +9,7 @@ from flowbars import load_sample_data, compute_tick_bars, bar_quality_report
 from flowbars.schema import SchemaMapping
 
 df = load_sample_data()
-schema = SchemaMapping({"timestamp": "ts", "price": "px", "volume": "vol"})
+schema = SchemaMapping({"timestamp": "timestamp", "price": "price", "volume": "volume"})
 bars = compute_tick_bars(df, threshold=100, schema=schema)
 report = bar_quality_report(bars)
 print(f"Ljung-Box p-value: {report['ljung_box']['p_value']:.4f}")
@@ -45,6 +45,20 @@ state = ctor.get_state()  # plain dict, JSON-serializable
 
 # Resume later — identical output as uninterrupted
 ctor2 = TickBarConstructor.from_state(state)
+```
+
+Resume is **idempotent** via a configurable watermark: re-feeding ticks that
+were already processed is silently discarded. Defaults to the tick timestamp;
+pass `watermark="seq"` (or any column name) for feeds that emit multiple ticks
+per millisecond, and `watermark=None` to disable.
+
+```python
+ctor = TickBarConstructor(threshold=100, schema=schema, watermark="timestamp")
+state = ctor.get_state()
+
+# Re-feeding an already-processed tick is a no-op
+ctor2 = TickBarConstructor.from_state(state, schema=schema)
+ctor2.update(tick_already_processed)  # -> None (deduplicated)
 ```
 
 ### Dual backend
@@ -86,8 +100,24 @@ Results on 250,000 synthetic ticks (Intel/AMD x86-64, numba 0.57+):
 
 ### Pluggable calendars
 
-- `ContinuousCalendar` — no session boundaries (crypto, forex)
-- `SessionCalendar` — configurable session hours in UTC (equities, futures)
+Four calendars cover every asset class, with full holiday/DST support where it
+matters:
+
+| Asset class | Calendar |
+|---|---|
+| Crypto (spot/perp, 24/7) | `ContinuousCalendar` |
+| FX majors/minors (24/5) | `WeekdayCalendar` |
+| US equities | `ExchangeCalendar("XNYS")` |
+| US futures / commodities | `ExchangeCalendar("CME")` |
+| LSE / EU equities | `ExchangeCalendar("LSE")` / `("XETR")` |
+| Custom fixed UTC session | `SessionCalendar(...)` |
+
+- `ContinuousCalendar` — always open; never a boundary.
+- `WeekdayCalendar` — open Mon–Fri; boundaries only at weekends.
+- `SessionCalendar` — fixed daily UTC hours (no holidays/DST — use only for a
+  constant UTC window).
+- `ExchangeCalendar` — wraps `exchange_calendars` for per-exchange holidays,
+  half-days, and DST-aware sessions (`pip install flowbars[calendars]`).
 
 Session boundaries trigger automatic bar close and accumulator reset.
 
@@ -153,6 +183,7 @@ from flowbars import (
 pip install flowbars                  # pure-Python backend
 pip install flowbars[numba]           # + numba JIT backend
 pip install flowbars[polars]          # + polars DataFrame adapter
+pip install flowbars[calendars]       # + exchange_calendars (holidays/DST)
 pip install flowbars[all]             # everything
 ```
 
@@ -289,7 +320,7 @@ Date range used: 2024-01-01 through 2024-01-31 (January 2024).
 | Assumption | Detail |
 |---|---|
 | **UTC only** | No timezone conversion or detection. All timestamps are treated as Unix milliseconds in UTC. |
-| **Ticks ordered** | Ticks must be non-decreasing in timestamp. The library does not sort for you — it processes in the order given. |
+| **Ticks ordered** | Ticks must be non-decreasing in timestamp. The library does not sort for you — it processes in the order given. Set `strict_ordering=True` to raise on out-of-order input. |
 | **Explicit schema** | You tell the library your column names via `SchemaMapping`. There is no auto-detection. |
 | **Float64 internally** | All prices, volumes, and computed values use `float64`. Float32 input is upcast. |
 | **NaN side = unknown** | A tick with `side=NaN` is treated as undetermined (first tick of a stream). It is included in OHLCV but excluded from signed-imbalance sums. Run-bar logic treats NaN as a wildcard that matches any direction. |
@@ -325,8 +356,10 @@ Date range used: 2024-01-01 through 2024-01-31 (January 2024).
 | `EWMAThresholdEstimator` | Two-component adaptive threshold |
 | `StaticThresholdEstimator` | Fixed threshold |
 | `StaticCalibrationHelper` | Estimate good seeds from data |
-| `ContinuousCalendar` | No session boundaries |
-| `SessionCalendar` | Configurable session hours |
+| `ContinuousCalendar` | No session boundaries (24/7) |
+| `WeekdayCalendar` | Mon–Fri, 24/5 |
+| `SessionCalendar` | Fixed daily UTC session hours |
+| `ExchangeCalendar` | Holiday/DST-aware (via `exchange_calendars`) |
 
 ### Tick rule
 
@@ -343,7 +376,7 @@ Date range used: 2024-01-01 through 2024-01-31 (January 2024).
 | **Streaming** | `update(tick)` + state save/resume | Batch only | Batch only |
 | **numba backend** | Yes (85×–237×) | Yes | No |
 | **Polars** | First-class adapter | No | No |
-| **Calendars** | Pluggable (continuous + sessions) | Hardcoded NYSE | Hardcoded |
+| **Calendars** | Pluggable (continuous, weekday, sessions, exchange-backed) | Hardcoded NYSE | Hardcoded |
 | **Bar quality** | Built-in diagnostics | None | None |
 | **Schema** | Explicit mapping | Auto-inference | Auto-inference |
 | **Benchmarks** | Reproducible, in-repo | None | None |

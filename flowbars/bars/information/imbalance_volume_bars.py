@@ -38,6 +38,12 @@ class ImbalanceVolumeBarConstructor(BaseBarConstructor):
         Number of initial bars to discard while the EWMA converges.
     calendar : TradingCalendar, optional
     schema : SchemaMapping, optional
+    watermark : str or None, default ``"timestamp"``
+        Dedup key for idempotent resume (``"timestamp"``, a column name, or
+        ``None`` to disable).
+    strict_ordering : bool, default False
+        If True, raise ``TickDataError`` when a tick arrives with a timestamp
+        earlier than the previous tick's (out-of-order input).
     stream_id : str, default ``"default"``
     on_bar : callable or None
     on_threshold_update : callable or None
@@ -52,7 +58,9 @@ class ImbalanceVolumeBarConstructor(BaseBarConstructor):
         warmup_bars: int = 0,
         calendar: TradingCalendar | None = None,
         schema: SchemaMapping | None = None,
+        watermark: str | None = "timestamp",
         stream_id: str = "default",
+        strict_ordering: bool = False,
         on_bar: Any = None,
         on_threshold_update: Any = None,
     ) -> None:
@@ -70,7 +78,9 @@ class ImbalanceVolumeBarConstructor(BaseBarConstructor):
             threshold_estimator=estimator,
             calendar=calendar,
             schema=schema,
+            watermark=watermark,
             stream_id=stream_id,
+            strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
@@ -104,6 +114,8 @@ def compute_imbalance_volume_bars(
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pd.DataFrame:
     """Build volume-imbalance bars from a DataFrame of ticks.
@@ -123,6 +135,12 @@ def compute_imbalance_volume_bars(
     warmup_bars : int, default 0
         Number of initial bars to discard.
     schema : SchemaMapping, optional
+    watermark : str or None, default ``"timestamp"``
+        Dedup key for idempotent resume (``"timestamp"``, a column name, or
+        ``None`` to disable).
+    strict_ordering : bool, default False
+        If True, raise ``TickDataError`` when a tick arrives with a timestamp
+        earlier than the previous tick's (out-of-order input).
     calendar : TradingCalendar, optional
 
     Returns
@@ -138,6 +156,8 @@ def compute_imbalance_volume_bars(
         warmup_bars=warmup_bars,
         calendar=calendar,
         schema=schema,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
     )
     return ctor.batch(ticks_df)
 

@@ -77,6 +77,8 @@ def compute_tick_bars(
     ticks_df: pl.DataFrame,
     threshold: int,
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pl.DataFrame:
     """Build tick bars from a Polars DataFrame of ticks.
@@ -97,7 +99,14 @@ def compute_tick_bars(
         Completed bars.
     """
     pd_ticks = ticks_df.to_pandas()
-    pd_bars = _pd_compute_tick_bars(pd_ticks, threshold=threshold, schema=schema, calendar=calendar)
+    pd_bars = _pd_compute_tick_bars(
+        pd_ticks,
+        threshold=threshold,
+        schema=schema,
+        calendar=calendar,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
+    )
     return pl.from_pandas(pd_bars)
 
 
@@ -105,6 +114,8 @@ def compute_volume_bars(
     ticks_df: pl.DataFrame,
     threshold: float,
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pl.DataFrame:
     """Build volume bars from a Polars DataFrame of ticks.
@@ -125,7 +136,12 @@ def compute_volume_bars(
     """
     pd_ticks = ticks_df.to_pandas()
     pd_bars = _pd_compute_volume_bars(
-        pd_ticks, threshold=threshold, schema=schema, calendar=calendar
+        pd_ticks,
+        threshold=threshold,
+        schema=schema,
+        calendar=calendar,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
     )
     return pl.from_pandas(pd_bars)
 
@@ -134,6 +150,8 @@ def compute_dollar_bars(
     ticks_df: pl.DataFrame,
     threshold: float,
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pl.DataFrame:
     """Build dollar bars from a Polars DataFrame of ticks.
@@ -154,7 +172,12 @@ def compute_dollar_bars(
     """
     pd_ticks = ticks_df.to_pandas()
     pd_bars = _pd_compute_dollar_bars(
-        pd_ticks, threshold=threshold, schema=schema, calendar=calendar
+        pd_ticks,
+        threshold=threshold,
+        schema=schema,
+        calendar=calendar,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
     )
     return pl.from_pandas(pd_bars)
 
@@ -164,6 +187,8 @@ def compute_time_bars(
     interval_ms: int,
     anchor: str = "clock",
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pl.DataFrame:
     """Build time bars from a Polars DataFrame of ticks.
@@ -186,7 +211,13 @@ def compute_time_bars(
     """
     pd_ticks = ticks_df.to_pandas()
     pd_bars = _pd_compute_time_bars(
-        pd_ticks, interval_ms=interval_ms, anchor=anchor, schema=schema, calendar=calendar
+        pd_ticks,
+        interval_ms=interval_ms,
+        anchor=anchor,
+        schema=schema,
+        calendar=calendar,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
     )
     return pl.from_pandas(pd_bars)
 
@@ -204,6 +235,8 @@ def compute_imbalance_tick_bars(
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pl.DataFrame:
     """Build tick-imbalance bars from a Polars DataFrame of ticks.
@@ -240,6 +273,8 @@ def compute_imbalance_tick_bars(
         warmup_bars=warmup_bars,
         schema=schema,
         calendar=calendar,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
     )
     return pl.from_pandas(pd_bars)
 
@@ -252,6 +287,8 @@ def compute_imbalance_volume_bars(
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pl.DataFrame:
     """Build volume-imbalance bars from a Polars DataFrame of ticks.
@@ -288,6 +325,8 @@ def compute_imbalance_volume_bars(
         warmup_bars=warmup_bars,
         schema=schema,
         calendar=calendar,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
     )
     return pl.from_pandas(pd_bars)
 
@@ -300,6 +339,8 @@ def compute_imbalance_dollar_bars(
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pl.DataFrame:
     """Build dollar-imbalance bars from a Polars DataFrame of ticks.
@@ -336,6 +377,8 @@ def compute_imbalance_dollar_bars(
         warmup_bars=warmup_bars,
         schema=schema,
         calendar=calendar,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
     )
     return pl.from_pandas(pd_bars)
 
@@ -354,6 +397,8 @@ def compute_run_tick_bars(
     warmup_bars: int = 0,
     min_run_length: int = 0,
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pl.DataFrame:
     """Build tick-run bars from a Polars DataFrame of ticks.
@@ -393,6 +438,8 @@ def compute_run_tick_bars(
         min_run_length=min_run_length,
         schema=schema,
         calendar=calendar,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
     )
     return pl.from_pandas(pd_bars)
 
@@ -406,6 +453,8 @@ def compute_run_volume_bars(
     warmup_bars: int = 0,
     min_run_length: int = 0,
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pl.DataFrame:
     """Build volume-run bars from a Polars DataFrame of ticks.
@@ -445,6 +494,8 @@ def compute_run_volume_bars(
         min_run_length=min_run_length,
         schema=schema,
         calendar=calendar,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
     )
     return pl.from_pandas(pd_bars)
 
@@ -458,6 +509,8 @@ def compute_run_dollar_bars(
     warmup_bars: int = 0,
     min_run_length: int = 0,
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pl.DataFrame:
     """Build dollar-run bars from a Polars DataFrame of ticks.
@@ -497,5 +550,7 @@ def compute_run_dollar_bars(
         min_run_length=min_run_length,
         schema=schema,
         calendar=calendar,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
     )
     return pl.from_pandas(pd_bars)

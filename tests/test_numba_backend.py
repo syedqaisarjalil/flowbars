@@ -889,8 +889,8 @@ class TestNumbaEdgeCases:
             # Should produce bars via Python fallback
             assert len(result) >= 0  # Produces output rather than crashing
             if _NUMBA_AVAILABLE:
-                # When numba is installed, the SessionCalendar warning fires
-                session_warnings = [x for x in w if "SessionCalendar" in str(x.message)]
+                # When numba is installed, the session-boundary warning fires
+                session_warnings = [x for x in w if "session boundaries" in str(x.message)]
                 assert len(session_warnings) >= 1
             else:
                 # When numba is not installed, the "numba not available" warning
@@ -898,7 +898,7 @@ class TestNumbaEdgeCases:
                 fallback_warnings = [
                     x
                     for x in w
-                    if "SessionCalendar" in str(x.message) or "numba" in str(x.message).lower()
+                    if "session boundaries" in str(x.message) or "numba" in str(x.message).lower()
                 ]
                 assert len(fallback_warnings) >= 1
 

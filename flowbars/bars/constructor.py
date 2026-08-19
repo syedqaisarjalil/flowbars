@@ -16,11 +16,20 @@ import numpy as np
 import pandas as pd
 
 from flowbars.bars.accumulators import BaseAccumulator
-from flowbars.calendars import ContinuousCalendar, SessionCalendar, TradingCalendar
-from flowbars.core import Bar, StateValidationError, TickInfo
+from flowbars.calendars import ContinuousCalendar, TradingCalendar
+from flowbars.core import Bar, SchemaError, StateValidationError, TickDataError, TickInfo
 from flowbars.schema import SchemaMapping
 from flowbars.thresholds import EWMAThresholdEstimator, ThresholdEstimator
 from flowbars.tick_rule import resolve_tick_signs
+
+
+def _tick_watermark(tick: TickInfo) -> int:
+    """Return the dedup watermark for *tick*.
+
+    Uses ``TickInfo.watermark`` when set (a custom monotonic key such as a
+    sequence number), otherwise falls back to ``timestamp``.
+    """
+    return tick.watermark if tick.watermark is not None else tick.timestamp
 
 
 class BaseBarConstructor:
@@ -41,8 +50,16 @@ class BaseBarConstructor:
         Defaults to :class:`ContinuousCalendar` (always-open).
     schema : SchemaMapping, optional
         Required for :meth:`batch`; not used by :meth:`update`.
+    watermark : str or None, default ``"timestamp"``
+        Dedup key for idempotent resume.  ``"timestamp"`` (default) dedups
+        on the tick timestamp; any other string is a column name (batch) or
+        ``TickInfo.watermark`` field (streaming) to dedup on.  ``None``
+        disables dedup.
     stream_id : str, default ``"default"``
         Opaque identifier validated on state resume.
+    strict_ordering : bool, default False
+        When True, raise :class:`TickDataError` if a tick arrives with a
+        timestamp earlier than the previous tick's (out-of-order input).
     warmup_bars : int, default 0
         Number of initial bars to discard (not returned from
         :meth:`update` / :meth:`batch`).  Bars during warmup still
@@ -71,7 +88,9 @@ class BaseBarConstructor:
         threshold_estimator: ThresholdEstimator,
         calendar: TradingCalendar | None = None,
         schema: SchemaMapping | None = None,
+        watermark: str | None = "timestamp",
         stream_id: str = "default",
+        strict_ordering: bool = False,
         warmup_bars: int = 0,
         backend: Literal["python", "numba"] = "python",
         on_bar: Callable[[Bar], None] | None = None,
@@ -86,7 +105,9 @@ class BaseBarConstructor:
         self._threshold_estimator = threshold_estimator
         self._calendar = calendar if calendar is not None else ContinuousCalendar()
         self._schema = schema
+        self._watermark_key = watermark
         self._stream_id = stream_id
+        self._strict_ordering = strict_ordering
         self._warmup_bars = warmup_bars
         self._backend = backend
         self._on_bar = on_bar
@@ -96,6 +117,8 @@ class BaseBarConstructor:
         self._bars_emitted: int = 0
         self._in_session: bool = True  # True until first boundary tick lands
         self._pending_bars: collections.deque[Bar] = collections.deque()
+        self._last_watermark: int | None = None  # dedup watermark of last accepted tick
+        self._last_timestamp: int | None = None  # timestamp of last accepted tick (ordering)
 
     # ── core API ────────────────────────────────────────────────────────
 
@@ -106,6 +129,25 @@ class BaseBarConstructor:
         handled.  During warmup bars are queued for the estimator but not
         returned.
         """
+        # 0. Watermark dedup — drop ticks already processed (idempotent resume)
+        wm = _tick_watermark(tick)
+        if (
+            self._watermark_key is not None
+            and self._last_watermark is not None
+            and wm <= self._last_watermark
+        ):
+            return None
+
+        # 0b. Ordering check — reject non-monotonic timestamps when enabled
+        if (
+            self._strict_ordering
+            and self._last_timestamp is not None
+            and tick.timestamp < self._last_timestamp
+        ):
+            raise TickDataError(
+                f"Out-of-order tick: timestamp {tick.timestamp} < previous {self._last_timestamp}"
+            )
+
         # 1. Drain pending queue first (bar from previous tick)
         if self._pending_bars:
             return self._pending_bars.popleft()
@@ -125,6 +167,8 @@ class BaseBarConstructor:
 
         # 3. Add tick to accumulator
         self._accumulator.add_tick(tick)
+        self._last_watermark = wm
+        self._last_timestamp = tick.timestamp
 
         # 4. Update threshold estimator (no-op for static, also no-op for EWMA)
         self._threshold_estimator.update(tick)
@@ -187,11 +231,44 @@ class BaseBarConstructor:
         # Derive signs if not supplied
         sides = resolve_tick_signs(prices, sides)
 
+        # ── watermark pre-filter (idempotent resume, backend-agnostic) ──
+        wm_arr = self._resolve_watermark_array(ticks_df, timestamps)
+        if wm_arr is not None and self._last_watermark is not None:
+            keep = wm_arr > self._last_watermark
+            timestamps = timestamps[keep]
+            prices = prices[keep]
+            volumes = volumes[keep]
+            if sides is not None:
+                sides = sides[keep]
+            wm_arr = wm_arr[keep]
+
+        # ── strict ordering check (fail fast on the whole batch) ────────
+        if self._strict_ordering and len(timestamps) > 0:
+            if self._last_timestamp is not None and int(timestamps[0]) < self._last_timestamp:
+                raise TickDataError(
+                    f"Out-of-order tick: timestamp {int(timestamps[0])} < "
+                    f"previous {self._last_timestamp}"
+                )
+            diffs = np.diff(timestamps)
+            if diffs.size and np.any(diffs < 0):
+                idx = int(np.argmax(diffs < 0)) + 1
+                raise TickDataError(
+                    f"Out-of-order tick at batch index {idx}: "
+                    f"timestamp {int(timestamps[idx])} < "
+                    f"previous {int(timestamps[idx - 1])}"
+                )
+
         # ── numba path ──────────────────────────────────────────────────
         if self._backend == "numba":
-            return self._batch_numba(timestamps, prices, volumes, sides)
+            result = self._batch_numba(timestamps, prices, volumes, sides, wm_arr)
+            # numba bypasses update(); advance the watermark explicitly
+            if wm_arr is not None and len(wm_arr) > 0:
+                self._last_watermark = int(wm_arr[-1])
+            if len(timestamps) > 0:
+                self._last_timestamp = int(timestamps[-1])
+            return result
 
-        # ── Python path (unchanged) ─────────────────────────────────────
+        # ── Python path ─────────────────────────────────────────────────
         bars: list[Bar] = []
         n = len(timestamps)
         for i in range(n):
@@ -201,6 +278,7 @@ class BaseBarConstructor:
                 price=float(prices[i]),
                 volume=float(volumes[i]),
                 side=float(raw_side) if not np.isnan(raw_side) else None,
+                watermark=int(wm_arr[i]) if wm_arr is not None else None,
             )
             bar = self.update(tick)
             if bar is not None:
@@ -257,6 +335,7 @@ class BaseBarConstructor:
         prices: np.ndarray,
         volumes: np.ndarray,
         sides: np.ndarray,
+        watermark: np.ndarray | None = None,
     ) -> pd.DataFrame:
         """Run the batch bar-construction loop via numba (or fall back to Python).
 
@@ -264,8 +343,8 @@ class BaseBarConstructor:
         warmup-bar slicing.  Falls back to the Python path when:
 
         * numba is not installed
-        * a :class:`SessionCalendar` is in use (boundaries are
-          infrequent callbacks — not worth duplicating in numba)
+        * a session-producing calendar is in use (``has_sessions=True`` —
+          boundaries are infrequent callbacks, not worth duplicating in numba)
         * an unsupported calendar type is detected
         """
         from flowbars.bars.numba_backend import (
@@ -281,15 +360,15 @@ class BaseBarConstructor:
         # ── fallback checks ────────────────────────────────────────────
         if not _NUMBA_AVAILABLE:
             _get_compilation_warning()
-            return self._batch_python(timestamps, prices, volumes, sides)
+            return self._batch_python(timestamps, prices, volumes, sides, watermark)
 
-        if isinstance(self._calendar, SessionCalendar):
+        if self._calendar.has_sessions:
             warnings.warn(
-                "SessionCalendar is not supported by the numba backend. "
-                "Falling back to the Python path.",
+                "This calendar produces session boundaries, which the numba "
+                "backend does not support. Falling back to the Python path.",
                 stacklevel=2,
             )
-            return self._batch_python(timestamps, prices, volumes, sides)
+            return self._batch_python(timestamps, prices, volumes, sides, watermark)
 
         # ── determine threshold config ─────────────────────────────────
         estimator = self._threshold_estimator
@@ -317,7 +396,7 @@ class BaseBarConstructor:
                     "Falling back to the Python path.",
                     stacklevel=2,
                 )
-                return self._batch_python(timestamps, prices, volumes, sides)
+                return self._batch_python(timestamps, prices, volumes, sides, watermark)
         elif isinstance(estimator, EWMAThresholdEstimator):
             # Adaptive threshold — use the EWMA-aware numba path
             try:
@@ -337,7 +416,7 @@ class BaseBarConstructor:
                     "Falling back to the Python path.",
                     stacklevel=2,
                 )
-                return self._batch_python(timestamps, prices, volumes, sides)
+                return self._batch_python(timestamps, prices, volumes, sides, watermark)
         else:
             # Static threshold (standard bars or info-driven bars with fixed threshold)
             threshold = estimator.current_threshold
@@ -356,7 +435,7 @@ class BaseBarConstructor:
                     "Falling back to the Python path.",
                     stacklevel=2,
                 )
-                return self._batch_python(timestamps, prices, volumes, sides)
+                return self._batch_python(timestamps, prices, volumes, sides, watermark)
 
         # ── warmup slicing ─────────────────────────────────────────────
         warmup = self._warmup_bars
@@ -416,6 +495,7 @@ class BaseBarConstructor:
         prices: np.ndarray,
         volumes: np.ndarray,
         sides: np.ndarray,
+        watermark: np.ndarray | None = None,
     ) -> pd.DataFrame:
         """Pure-Python batch loop — used as the fallback from :meth:`_batch_numba`."""
         bars: list[Bar] = []
@@ -427,6 +507,7 @@ class BaseBarConstructor:
                 price=float(prices[i]),
                 volume=float(volumes[i]),
                 side=float(raw_side) if not np.isnan(raw_side) else None,
+                watermark=int(watermark[i]) if watermark is not None else None,
             )
             bar_result = self.update(tick)
             if bar_result is not None:
@@ -474,6 +555,26 @@ class BaseBarConstructor:
             ]
         )
 
+    def _resolve_watermark_array(
+        self, ticks_df: pd.DataFrame, timestamps: np.ndarray
+    ) -> np.ndarray | None:
+        """Resolve the watermark values for a batch, or ``None`` if disabled.
+
+        ``"timestamp"`` reuses the already-extracted timestamp array; any
+        other key is looked up as a literal column name in ``ticks_df``.
+        """
+        if self._watermark_key is None:
+            return None
+        if self._watermark_key == "timestamp":
+            return timestamps
+        col = self._watermark_key
+        if col not in ticks_df.columns:
+            raise SchemaError(
+                f"Watermark column {col!r} not found in input. "
+                f"Available columns: {sorted(ticks_df.columns)}"
+            )
+        return np.asarray(ticks_df[col].to_numpy())
+
     # ── read-only accessors ─────────────────────────────────────────────
 
     @property
@@ -499,6 +600,9 @@ class BaseBarConstructor:
             "stream_id": self._stream_id,
             "bar_type": self._accumulator._bar_type,
             "backend": self._backend,
+            "watermark_key": self._watermark_key,
+            "last_watermark": self._last_watermark,
+            "last_timestamp": self._last_timestamp,
             "accumulator": self._accumulator.get_state(),
             "threshold_estimator": self._threshold_estimator.get_state(),
             "bars_emitted": self._bars_emitted,
@@ -538,12 +642,19 @@ class BaseBarConstructor:
                 f"bar_type mismatch: state has {state['bar_type']!r}, "
                 f"accumulator has {self._accumulator._bar_type!r}"
             )
+        if state["watermark_key"] != self._watermark_key:
+            raise StateValidationError(
+                f"watermark_key mismatch: state has {state['watermark_key']!r}, "
+                f"constructor has {self._watermark_key!r}"
+            )
 
         # Apply state
         self._accumulator.load_state(state["accumulator"])
         self._threshold_estimator.load_state(state["threshold_estimator"])
         self._bars_emitted = state.get("bars_emitted", 0)
         self._in_session = state.get("in_session", True)
+        self._last_watermark = state["last_watermark"]
+        self._last_timestamp = state.get("last_timestamp")
         # Restore backend if present (new in state schema v1, added in Phase 9)
         saved_backend = state.get("backend", "python")
         if saved_backend in ("python", "numba"):
@@ -594,6 +705,7 @@ class BaseBarConstructor:
             threshold_estimator=threshold_estimator,
             calendar=calendar,
             schema=schema,
+            watermark=state["watermark_key"],
             stream_id=stream_id,
             warmup_bars=warmup_bars,
             backend=backend,

@@ -27,6 +27,12 @@ class DollarBarConstructor(BaseBarConstructor):
         Must be positive.
     calendar : TradingCalendar, optional
     schema : SchemaMapping, optional
+    watermark : str or None, default ``"timestamp"``
+        Dedup key for idempotent resume (``"timestamp"``, a column name, or
+        ``None`` to disable).
+    strict_ordering : bool, default False
+        If True, raise ``TickDataError`` when a tick arrives with a timestamp
+        earlier than the previous tick's (out-of-order input).
     stream_id : str, default ``"default"``
     on_bar : callable or None
     on_threshold_update : callable or None
@@ -37,7 +43,9 @@ class DollarBarConstructor(BaseBarConstructor):
         threshold: float,
         calendar: TradingCalendar | None = None,
         schema: SchemaMapping | None = None,
+        watermark: str | None = "timestamp",
         stream_id: str = "default",
+        strict_ordering: bool = False,
         on_bar: Any = None,
         on_threshold_update: Any = None,
     ) -> None:
@@ -52,7 +60,9 @@ class DollarBarConstructor(BaseBarConstructor):
             threshold_estimator=estimator,
             calendar=calendar,
             schema=schema,
+            watermark=watermark,
             stream_id=stream_id,
+            strict_ordering=strict_ordering,
             warmup_bars=0,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
@@ -78,6 +88,8 @@ def compute_dollar_bars(
     ticks_df: pd.DataFrame,
     threshold: float,
     schema: SchemaMapping | None = None,
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
 ) -> pd.DataFrame:
     """Build dollar bars from a DataFrame of ticks.
@@ -89,6 +101,12 @@ def compute_dollar_bars(
     threshold : float
         Notional-value threshold per bar (e.g. 1_000_000.0 for $1M bars).
     schema : SchemaMapping, optional
+    watermark : str or None, default ``"timestamp"``
+        Dedup key for idempotent resume (``"timestamp"``, a column name, or
+        ``None`` to disable).
+    strict_ordering : bool, default False
+        If True, raise ``TickDataError`` when a tick arrives with a timestamp
+        earlier than the previous tick's (out-of-order input).
     calendar : TradingCalendar, optional
 
     Returns
@@ -100,6 +118,8 @@ def compute_dollar_bars(
         threshold=threshold,
         calendar=calendar,
         schema=schema,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
     )
     return ctor.batch(ticks_df)
 

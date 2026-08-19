@@ -17,6 +17,7 @@ class TickInfo:
     price: float
     volume: float
     side: float | None = None  # +1.0 (buy), −1.0 (sell), NaN, or None if not yet derived
+    watermark: int | None = None  # optional monotonic dedup key; None → use timestamp
 
 
 @dataclass
