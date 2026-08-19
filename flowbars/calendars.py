@@ -9,6 +9,8 @@ from __future__ import annotations
 import datetime
 from abc import ABC, abstractmethod
 
+import pandas as pd
+
 
 class TradingCalendar(ABC):
     """Abstract base class for trading calendars.
@@ -16,6 +18,10 @@ class TradingCalendar(ABC):
     All timestamps are Unix milliseconds (UTC).  Calendars are stateless —
     they hold configuration only and have no mutable state to persist.
     """
+
+    # True -> calendar can produce session boundaries (weekends, closes,
+    # holidays); the numba backend must fall back to Python for such calendars.
+    has_sessions: bool = True
 
     @abstractmethod
     def is_session_boundary(self, timestamp: int) -> bool:
@@ -46,6 +52,8 @@ class ContinuousCalendar(TradingCalendar):
 
     This is the default for crypto and forex markets that trade 24/7.
     """
+
+    has_sessions: bool = False
 
     def is_session_boundary(self, timestamp: int) -> bool:
         return False
@@ -156,6 +164,78 @@ class SessionCalendar(TradingCalendar):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# All-day weekday calendar (FX, 24/5 commodities)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class WeekdayCalendar(TradingCalendar):
+    """A calendar open all day Monday–Friday, closed Saturday and Sunday.
+
+    Use for FX majors/minors (24/5) and near-24-hour commodities.
+
+    Boundaries occur only at week boundaries (midnight UTC between Sunday
+    and Monday, and between Friday and Saturday).
+    """
+
+    has_sessions: bool = True
+
+    def is_session_boundary(self, timestamp: int) -> bool:
+        """Return ``True`` if *timestamp* falls on a weekend (Sat/Sun UTC)."""
+        return _utcfromtimestamp(timestamp).weekday() >= 5
+
+    def next_session_open(self, timestamp: int) -> int:
+        """Return the next Monday 00:00:00.000 UTC ≥ *timestamp*."""
+        dt = _utcfromtimestamp(timestamp)
+        candidate = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        if candidate <= dt:
+            candidate += datetime.timedelta(days=1)
+        while candidate.weekday() != 0:
+            candidate += datetime.timedelta(days=1)
+        return _to_utc_ms(candidate)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Exchange-backed calendar (equities, futures, commodities — holidays + DST)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class ExchangeCalendar(TradingCalendar):
+    """A calendar backed by an ``exchange_calendars`` calendar.
+
+    Handles holidays, half-days, and DST shifts for exchanges such as NYSE
+    (``"XNYS"``), Nasdaq (``"XNAS"``), CME (``"CME"``), LSE (``"LSE"``), etc.
+
+    Requires the optional dependency ``pip install flowbars[calendars]``.
+
+    Parameters
+    ----------
+    exchange : str
+        An ``exchange_calendars`` exchange code, e.g. ``"XNYS"`` or ``"CME"``.
+    """
+
+    has_sessions: bool = True
+
+    def __init__(self, exchange: str) -> None:
+        try:
+            import exchange_calendars as xcals  # noqa: PLC0415
+        except ImportError as e:
+            raise ImportError(
+                "ExchangeCalendar requires the optional dependency. "
+                "Install with `pip install flowbars[calendars]`."
+            ) from e
+        self._cal = xcals.get_calendar(exchange)
+        self._exchange = exchange
+
+    def is_session_boundary(self, timestamp: int) -> bool:
+        """Return ``True`` if *timestamp* is not during an open session."""
+        return not self._cal.is_open_on_minute(_ms_to_ts(timestamp))
+
+    def next_session_open(self, timestamp: int) -> int:
+        """Return the next session-open timestamp ≥ *timestamp*."""
+        return _ts_to_ms(self._cal.next_open(_ms_to_ts(timestamp)))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Internal helpers
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -177,3 +257,13 @@ def _to_utc_ms(dt: datetime.datetime) -> int:
     # Attach UTC tzinfo so .timestamp() computes the correct Unix time
     # regardless of the local timezone.
     return int(dt.replace(tzinfo=datetime.timezone.utc).timestamp() * 1000)
+
+
+def _ms_to_ts(ms: int) -> pd.Timestamp:
+    """Convert a Unix-ms timestamp to a tz-aware UTC ``pd.Timestamp``."""
+    return pd.Timestamp(ms, unit="ms", tz="UTC")
+
+
+def _ts_to_ms(ts: pd.Timestamp) -> int:
+    """Convert a tz-aware ``pd.Timestamp`` to Unix milliseconds."""
+    return int(ts.timestamp() * 1000)

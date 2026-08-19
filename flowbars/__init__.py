@@ -33,7 +33,13 @@ from flowbars.bars.standard import (  # noqa: F401 — triggers @register_bar si
     compute_time_bars,
     compute_volume_bars,
 )
-from flowbars.calendars import ContinuousCalendar, SessionCalendar, TradingCalendar
+from flowbars.calendars import (
+    ContinuousCalendar,
+    ExchangeCalendar,
+    SessionCalendar,
+    TradingCalendar,
+    WeekdayCalendar,
+)
 
 # Re-export the bar quality report
 from flowbars.quality import bar_quality_report
@@ -53,6 +59,7 @@ __all__ = [
     "BaseBarConstructor",
     "ContinuousCalendar",
     "DollarBarConstructor",
+    "ExchangeCalendar",
     "EWMAThresholdEstimator",
     "ImbalanceDollarBarConstructor",
     "ImbalanceTickBarConstructor",
@@ -69,6 +76,7 @@ __all__ = [
     "TimeBarConstructor",
     "TradingCalendar",
     "VolumeBarConstructor",
+    "WeekdayCalendar",
     "bar_quality_report",
     "load_sample_data",
     "compute_dollar_bars",

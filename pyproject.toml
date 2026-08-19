@@ -41,8 +41,9 @@ dev = [
     "ruff",
 ]
 quality = ["scipy>=1.9"]
+calendars = ["exchange_calendars>=4.0"]
 all = [
-    "flowbars[numba,polars,quality]",
+    "flowbars[numba,polars,quality,calendars]",
 ]
 
 [project.urls]
@@ -71,6 +72,10 @@ module = "numba"
 ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = "exchange_calendars"
+ignore_missing_imports = true
 
 [tool.ruff]
 target-version = "py39"
