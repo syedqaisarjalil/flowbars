@@ -834,6 +834,48 @@ class TestNumbaEdgeCases:
 
         assert len(warm_bars) == len(all_bars) - 2
 
+    def test_bars_emitted_accounted(self) -> None:
+        """The numba path increments bars_emitted (bypassing update())."""
+        if not _NUMBA_AVAILABLE:
+            pytest.skip("numba not installed")
+
+        n = 50
+        timestamps = np.arange(1000, 1000 + n * 100, 100, dtype=np.float64)
+        prices = np.linspace(100.0, 200.0, n)
+        volumes = np.ones(n, dtype=np.float64)
+        df = pd.DataFrame({"ts": timestamps, "px": prices, "vol": volumes})
+
+        acc = TickAccumulator()
+        est = StaticThresholdEstimator(threshold=5.0)
+        ctor = BaseBarConstructor(acc, est, schema=default_schema(), backend="numba")
+        result = ctor.batch(df)
+
+        # threshold=5 over 50 ticks -> 10 bars, all returned and all counted
+        assert ctor.bars_emitted == len(result) == 10
+        assert ctor.get_state()["bars_emitted"] == 10
+
+    def test_bars_emitted_counts_warmup(self) -> None:
+        """bars_emitted includes warmup bars even though they aren't returned."""
+        if not _NUMBA_AVAILABLE:
+            pytest.skip("numba not installed")
+
+        n = 50
+        timestamps = np.arange(1000, 1000 + n * 100, 100, dtype=np.float64)
+        prices = np.linspace(100.0, 200.0, n)
+        volumes = np.ones(n, dtype=np.float64)
+        df = pd.DataFrame({"ts": timestamps, "px": prices, "vol": volumes})
+
+        acc = TickAccumulator()
+        est = StaticThresholdEstimator(threshold=5.0)
+        ctor = BaseBarConstructor(
+            acc, est, schema=default_schema(), backend="numba", warmup_bars=2
+        )
+        result = ctor.batch(df)
+
+        assert ctor.bars_emitted == 10  # all 10 bars closed
+        assert len(result) == 8  # 2 warmup bars discarded
+        assert ctor.get_state()["bars_emitted"] == 10
+
     def test_zero_threshold_tick_bars(self) -> None:
         """Threshold=0: every tick closes its own bar."""
         n = 50

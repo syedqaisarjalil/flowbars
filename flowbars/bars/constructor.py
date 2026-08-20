@@ -437,6 +437,11 @@ class BaseBarConstructor:
                 )
                 return self._batch_python(timestamps, prices, volumes, sides, watermark)
 
+        # numba kernel bypasses update() — account for bars emitted (including
+        # warmup bars, matching the Python path which counts before the warmup
+        # filter). bar_data still contains warmup bars at this point.
+        self._bars_emitted += len(bar_data)
+
         # ── warmup slicing ─────────────────────────────────────────────
         warmup = self._warmup_bars
         if warmup > 0 and len(bar_data) > 0:
