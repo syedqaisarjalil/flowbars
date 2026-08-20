@@ -306,14 +306,21 @@ python -m flowbars.benchmarks
 
 ### Comparing with mlfinlab / mlfinpy
 
-The comparison notebooks in `notebooks/` use this procedure:
+The comparison notebook `notebooks/01_compare_mlfinpy.ipynb` compares flowbars
+against [mlfinpy](https://pypi.org/project/mlfinpy/) — the free, open-source
+reimplementation of the paid MlFinLab — on synthetic tick data (no external
+data files needed). It requires Python ≥ 3.11:
 
-1. Download Binance BTC/USDT tick data from
-   [Binance Public Data](https://data.binance.vision/) (monthly, csv.zip).
-2. Extract to `data/btcusdt/`.
-3. Run `notebooks/01_compare_mlfinlab.ipynb`.
+```bash
+conda create -n flowbars311 python=3.11 -y
+conda activate flowbars311
+pip install mlfinpy scikit-learn
+pip install .                 # from the flowbars repo root
+jupyter nbconvert --to notebook --execute notebooks/01_compare_mlfinpy.ipynb
+```
 
-Date range used: 2024-01-01 through 2024-01-31 (January 2024).
+A direct comparison against the paid MlFinLab is deferred; mlfinpy serves as
+the free, drop-in proxy.
 
 ## Assumptions
 
