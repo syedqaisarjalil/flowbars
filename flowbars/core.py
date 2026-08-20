@@ -21,6 +21,25 @@ class TickInfo:
 
 
 @dataclass
+class MinuteInfo:
+    """A single minute OHLCV candle, normalized to the internal representation.
+
+    Used by the minute-OHLCV → bars path (``flowbars.bars.minute``). Unlike
+    :class:`TickInfo` (a single trade print), a minute already carries its own
+    open/high/low/close, so the bar accumulator merges those directly instead
+    of deriving them from a single price.
+    """
+
+    timestamp: int  # Unix ms (UTC) — the minute's open time
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    side: float | None = None  # +1.0, −1.0, or None if not derived (first minute)
+
+
+@dataclass
 class Bar:
     """A completed bar — the output of bar construction.
 

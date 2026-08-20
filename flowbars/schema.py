@@ -262,3 +262,160 @@ class SchemaMapping:
                 validate_side(float(side))
 
         return TickInfo(timestamp=timestamp, price=price, volume=volume, side=side)
+
+
+# ── Minute (OHLCV) schema mapping ────────────────────────────────────────────
+
+
+class MinuteSchemaMapping:
+    """Maps user-supplied column names to the minute OHLCV fields.
+
+    Used by the minute-OHLCV → bars path (``flowbars.bars.minute``). Unlike
+    :class:`SchemaMapping` (which requires a single ``price``), a minute input
+    requires ``timestamp``, ``open``, ``high``, ``low``, ``close``, and
+    ``volume``.
+
+    Parameters
+    ----------
+    mapping : dict
+        Keys are internal field names (``timestamp``, ``open``, ``high``,
+        ``low``, ``close``, ``volume``, and optionally ``side``). Values are
+        the corresponding column names in the user's DataFrame.
+
+    Raises
+    ------
+    SchemaError
+        If required keys are missing or unknown keys are provided.
+    """
+
+    _REQUIRED_FIELDS = frozenset({"timestamp", "open", "high", "low", "close", "volume"})
+    _OPTIONAL_FIELDS = frozenset({"side"})
+    _ALLOWED_FIELDS = _REQUIRED_FIELDS | _OPTIONAL_FIELDS
+
+    def __init__(self, mapping: dict[str, str]) -> None:
+        keys = set(mapping.keys())
+        unknown = keys - self._ALLOWED_FIELDS
+        if unknown:
+            raise SchemaError(
+                f"Unknown schema keys: {sorted(unknown)}. "
+                f"Allowed keys: {sorted(self._ALLOWED_FIELDS)}"
+            )
+        missing = self._REQUIRED_FIELDS - keys
+        if missing:
+            raise SchemaError(
+                f"Missing required schema keys: {sorted(missing)}. "
+                f"Must provide: {sorted(self._REQUIRED_FIELDS)}"
+            )
+
+        self._mapping: dict[str, str] = dict(mapping)
+
+    # -- read-only accessors --
+
+    @property
+    def timestamp_col(self) -> str:
+        return self._mapping["timestamp"]
+
+    @property
+    def open_col(self) -> str:
+        return self._mapping["open"]
+
+    @property
+    def high_col(self) -> str:
+        return self._mapping["high"]
+
+    @property
+    def low_col(self) -> str:
+        return self._mapping["low"]
+
+    @property
+    def close_col(self) -> str:
+        return self._mapping["close"]
+
+    @property
+    def volume_col(self) -> str:
+        return self._mapping["volume"]
+
+    @property
+    def side_col(self) -> str | None:
+        return self._mapping.get("side")
+
+    @property
+    def has_side(self) -> bool:
+        return "side" in self._mapping
+
+    def validate_columns(self, columns: set[str]) -> None:
+        """Check that all mapped columns exist in the input."""
+        for field, col in self._mapping.items():
+            if col not in columns:
+                raise SchemaError(
+                    f"Column {col!r} (mapped to {field!r}) not found in "
+                    f"input. Available columns: {sorted(columns)}"
+                )
+
+    def extract_arrays(
+        self, df: pd.DataFrame
+    ) -> tuple[
+        npt.NDArray[Any],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64] | None,
+    ]:
+        """Extract and validate numpy arrays from a minute OHLCV DataFrame.
+
+        Returns
+        -------
+        tuple
+            ``(timestamps, opens, highs, lows, closes, volumes, sides)``.
+            Prices/volumes are ``float64``; timestamps preserve their input
+            dtype; ``sides`` is ``float64`` or ``None``.
+
+        Raises
+        ------
+        SchemaError
+            If a mapped column is missing.
+        TickDataError
+            If any OHLC value is non-finite/negative, volumes are invalid, or
+            the OHLC relationship (``low <= open/close <= high``) is violated.
+        """
+        self.validate_columns(set(df.columns))
+
+        timestamps: npt.NDArray[Any] = np.asarray(df[self.timestamp_col].to_numpy())
+        opens = df[self.open_col].to_numpy(dtype=np.float64, na_value=np.nan)
+        highs = df[self.high_col].to_numpy(dtype=np.float64, na_value=np.nan)
+        lows = df[self.low_col].to_numpy(dtype=np.float64, na_value=np.nan)
+        closes = df[self.close_col].to_numpy(dtype=np.float64, na_value=np.nan)
+        volumes = df[self.volume_col].to_numpy(dtype=np.float64, na_value=np.nan)
+
+        validate_price_array(opens)
+        validate_price_array(highs)
+        validate_price_array(lows)
+        validate_price_array(closes)
+        validate_volume_array(volumes)
+        _validate_ohlc_consistency(opens, highs, lows, closes)
+
+        sides: npt.NDArray[np.float64] | None = None
+        if self.has_side:
+            side_col = self._mapping["side"]
+            sides = df[side_col].to_numpy(dtype=np.float64, na_value=np.nan)
+            validate_side_array(sides)
+
+        return timestamps, opens, highs, lows, closes, volumes, sides
+
+
+def _validate_ohlc_consistency(
+    opens: npt.NDArray[np.float64],
+    highs: npt.NDArray[np.float64],
+    lows: npt.NDArray[np.float64],
+    closes: npt.NDArray[np.float64],
+) -> None:
+    """Raise TickDataError if any minute violates ``low <= open,close <= high``."""
+    bad = (highs < lows) | (highs < opens) | (highs < closes) | (lows > opens) | (lows > closes)
+    i = _first_bad_index(bad)
+    if i is not None:
+        raise TickDataError(
+            f"OHLC inconsistent at row {i}: open={opens[i]!r}, high={highs[i]!r}, "
+            f"low={lows[i]!r}, close={closes[i]!r}. Require low <= open, close <= high."
+        )

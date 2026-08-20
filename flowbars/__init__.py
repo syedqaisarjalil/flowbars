@@ -46,7 +46,7 @@ from flowbars.quality import bar_quality_report
 
 # Sample data loader
 from flowbars.sample_data import load_sample_data
-from flowbars.schema import SchemaMapping
+from flowbars.schema import MinuteSchemaMapping, SchemaMapping
 from flowbars.thresholds import (
     EWMAThresholdEstimator,
     StaticCalibrationHelper,
@@ -64,6 +64,7 @@ __all__ = [
     "ImbalanceDollarBarConstructor",
     "ImbalanceTickBarConstructor",
     "ImbalanceVolumeBarConstructor",
+    "MinuteSchemaMapping",
     "RunDollarBarConstructor",
     "RunTickBarConstructor",
     "RunVolumeBarConstructor",

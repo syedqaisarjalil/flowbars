@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 
-from flowbars.core import Bar, TickInfo
+from flowbars.core import Bar, MinuteInfo, TickInfo
 
 
 class BaseAccumulator(ABC):
@@ -70,6 +70,33 @@ class BaseAccumulator(ABC):
         self._dollar_value += tick.price * tick.volume
         self._num_ticks += 1
         self._close_ts = tick.timestamp
+
+    def add_minute(self, minute: MinuteInfo) -> None:
+        """Update running OHLCV statistics with a whole minute candle.
+
+        Unlike :meth:`add_tick` (a single price, from which high/low are
+        derived), a minute already carries its own OHLC, so they are merged
+        directly. ``_num_ticks`` counts minutes here (the minute path's
+        documented ``num_ticks`` proxy). ``_dollar_value`` uses
+        ``close × volume`` as the notional proxy.
+        """
+        if not self._has_tick:
+            self._open = minute.open
+            self._high = minute.high
+            self._low = minute.low
+            self._open_ts = minute.timestamp
+            self._has_tick = True
+        else:
+            if minute.high > self._high:
+                self._high = minute.high
+            if minute.low < self._low:
+                self._low = minute.low
+
+        self._close = minute.close
+        self._volume += minute.volume
+        self._dollar_value += minute.close * minute.volume
+        self._num_ticks += 1
+        self._close_ts = minute.timestamp
 
     # ── partial bar access ──────────────────────────────────────────────
 
@@ -456,6 +483,21 @@ def _imbalance_metric(tick: TickInfo, metric: str) -> float:
         return tick.price * tick.volume
 
 
+def _minute_metric(minute: MinuteInfo, metric: str) -> float:
+    """Extract the imbalance/run weight from a minute candle.
+
+    Mirrors :func:`_imbalance_metric` for the minute path. ``"tick"`` is not
+    used by the minute path (tick-count bars are not feasible from minutes),
+    but is included for symmetry.
+    """
+    if metric == "tick":
+        return 1.0
+    elif metric == "volume":
+        return minute.volume
+    else:  # "dollar"
+        return minute.close * minute.volume
+
+
 class RunAccumulator(BaseAccumulator):
     """Closes a bar when the cumulative same-sign run statistic crosses a threshold.
 
@@ -497,9 +539,11 @@ class RunAccumulator(BaseAccumulator):
 
     def add_tick(self, tick: TickInfo) -> None:
         super().add_tick(tick)
-        metric_value = _imbalance_metric(tick, self._metric)
         side = tick.side if tick.side is not None else np.nan
+        self._accumulate_run(side, _imbalance_metric(tick, self._metric))
 
+    def _accumulate_run(self, side: float, metric_value: float) -> None:
+        """Accumulate one same-sign run step (shared by tick and minute paths)."""
         if self._first_tick:
             # Very first tick of the stream: start the first run.
             self._first_tick = False
