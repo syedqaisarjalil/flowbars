@@ -586,4 +586,4 @@ floats are accepted and cast; `datetime64`/tz-aware columns raise
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://github.com/syedqaisarjalil/flowbars/blob/main/LICENSE).
