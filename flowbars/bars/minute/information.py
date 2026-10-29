@@ -130,11 +130,15 @@ class MinuteImbalanceVolumeBarConstructor(_MinuteEWMABarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> MinuteImbalanceVolumeBarConstructor:
         acc_state = state["accumulator"]
         acc = MinuteImbalanceAccumulator(bar_type=state["bar_type"], metric=acc_state["metric"])
         est = EWMAThresholdEstimator.from_state(state["threshold_estimator"])
-        return super().from_state(state, acc, est, calendar, schema)  # type: ignore[return-value]
+        return super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[return-value]
 
 
 class MinuteImbalanceDollarBarConstructor(_MinuteEWMABarConstructor):
@@ -192,11 +196,15 @@ class MinuteImbalanceDollarBarConstructor(_MinuteEWMABarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> MinuteImbalanceDollarBarConstructor:
         acc_state = state["accumulator"]
         acc = MinuteImbalanceAccumulator(bar_type=state["bar_type"], metric=acc_state["metric"])
         est = EWMAThresholdEstimator.from_state(state["threshold_estimator"])
-        return super().from_state(state, acc, est, calendar, schema)  # type: ignore[return-value]
+        return super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[return-value]
 
 
 class _MinuteRunBarConstructor(_MinuteEWMABarConstructor):
@@ -323,11 +331,15 @@ class MinuteRunVolumeBarConstructor(_MinuteRunBarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> MinuteRunVolumeBarConstructor:
         acc_state = state["accumulator"]
         acc = MinuteRunAccumulator(bar_type=state["bar_type"], metric=acc_state["metric"])
         est = EWMAThresholdEstimator.from_state(state["threshold_estimator"])
-        return super().from_state(state, acc, est, calendar, schema)  # type: ignore[return-value]
+        return super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[return-value]
 
 
 class MinuteRunDollarBarConstructor(_MinuteRunBarConstructor):
@@ -386,11 +398,15 @@ class MinuteRunDollarBarConstructor(_MinuteRunBarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> MinuteRunDollarBarConstructor:
         acc_state = state["accumulator"]
         acc = MinuteRunAccumulator(bar_type=state["bar_type"], metric=acc_state["metric"])
         est = EWMAThresholdEstimator.from_state(state["threshold_estimator"])
-        return super().from_state(state, acc, est, calendar, schema)  # type: ignore[return-value]
+        return super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[return-value]
 
 
 def compute_imbalance_volume_bars_from_minutes(

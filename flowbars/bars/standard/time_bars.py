@@ -101,6 +101,8 @@ class TimeBarConstructor(BaseBarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: SchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> TimeBarConstructor:
         """Reconstruct a ``TimeBarConstructor`` from a saved state dict."""
         acc_state = state["accumulator"]
@@ -110,7 +112,9 @@ class TimeBarConstructor(BaseBarConstructor):
             anchor=acc_state.get("anchor", "clock"),
         )
         est = StaticThresholdEstimator.from_state(state["threshold_estimator"])
-        inst: TimeBarConstructor = super().from_state(state, acc, est, calendar, schema)  # type: ignore[assignment]
+        inst: TimeBarConstructor = super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[assignment]
         return inst
 
 

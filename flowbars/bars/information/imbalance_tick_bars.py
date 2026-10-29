@@ -109,6 +109,8 @@ class ImbalanceTickBarConstructor(BaseBarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: SchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> ImbalanceTickBarConstructor:
         """Reconstruct an ``ImbalanceTickBarConstructor`` from a saved state dict."""
         acc_state = state["accumulator"]
@@ -117,7 +119,9 @@ class ImbalanceTickBarConstructor(BaseBarConstructor):
             metric=acc_state["metric"],
         )
         est = EWMAThresholdEstimator.from_state(state["threshold_estimator"])
-        inst: ImbalanceTickBarConstructor = super().from_state(state, acc, est, calendar, schema)  # type: ignore[assignment]
+        inst: ImbalanceTickBarConstructor = super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[assignment]
         return inst
 
 

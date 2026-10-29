@@ -7,7 +7,10 @@ boundaries (e.g., NYSE close at 21:00 UTC) and when the next session opens.
 from __future__ import annotations
 
 import datetime
+import hashlib
+import json
 from abc import ABC, abstractmethod
+from typing import Any
 
 import pandas as pd
 
@@ -41,6 +44,40 @@ class TradingCalendar(ABC):
         """
         ...
 
+    # ── identity / session introspection (defaults: none) ─────────────────
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable description of this calendar's identity.
+
+        Used by :meth:`fingerprint` and saved in constructor state so a
+        resume against a different calendar fails loudly instead of silently
+        changing session behavior.  Custom calendars must implement this.
+        """
+        raise NotImplementedError(f"{type(self).__name__} must implement to_dict()")
+
+    def fingerprint(self) -> str:
+        """Stable identity hash of the calendar configuration."""
+        blob = json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+    def session_id(self, timestamp: int) -> str | None:
+        """Stable identifier of the session containing *timestamp*.
+
+        Returns ``None`` when the timestamp is outside any session or the
+        calendar has no sessions.
+        """
+        return None
+
+    def session_end(self, timestamp: int) -> int | None:
+        """Unix-ms close instant of the session containing *timestamp*.
+
+        Returns ``None`` when the timestamp is outside any session or the
+        calendar has no sessions.  Session force-closes use this so a
+        ``partial`` bar's ``close_ts`` is the instant its information became
+        available, not the first timestamp after the boundary.
+        """
+        return None
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Always-open calendar (crypto / forex)
@@ -60,6 +97,9 @@ class ContinuousCalendar(TradingCalendar):
 
     def next_session_open(self, timestamp: int) -> int:
         return timestamp
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": "continuous"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -124,6 +164,12 @@ class SessionCalendar(TradingCalendar):
         that started on the prior UTC day).  Only sessions whose *open* falls
         on a weekday (Mon–Fri) are considered valid.
         """
+        return self._containing_session(timestamp) is None
+
+    def _containing_session(
+        self, timestamp: int
+    ) -> tuple[datetime.datetime, datetime.datetime] | None:
+        """Return ``(open, close)`` in naive UTC for the session containing *timestamp*."""
         dt = _utcfromtimestamp(timestamp)
 
         # Check yesterday's session (overnight sessions can start yesterday)
@@ -131,15 +177,32 @@ class SessionCalendar(TradingCalendar):
         y_open = _session_open(yesterday, self._start_hour, self._start_minute)
         y_close = y_open + self._session_duration
         if y_open.weekday() < 5 and y_open <= dt < y_close:
-            return False
+            return y_open, y_close
 
         # Check today's session
         t_open = _session_open(dt, self._start_hour, self._start_minute)
         t_close = t_open + self._session_duration
         if t_open.weekday() < 5 and t_open <= dt < t_close:
-            return False
+            return t_open, t_close
 
-        return True
+        return None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": "session",
+            "start_hour": self._start_hour,
+            "start_minute": self._start_minute,
+            "end_hour": self._end_hour,
+            "end_minute": self._end_minute,
+        }
+
+    def session_id(self, timestamp: int) -> str | None:
+        span = self._containing_session(timestamp)
+        return None if span is None else _session_label(span[0])
+
+    def session_end(self, timestamp: int) -> int | None:
+        span = self._containing_session(timestamp)
+        return None if span is None else _to_utc_ms(span[1])
 
     def next_session_open(self, timestamp: int) -> int:
         """Return the next session-open timestamp ≥ *timestamp*.
@@ -193,6 +256,22 @@ class WeekdayCalendar(TradingCalendar):
             candidate += datetime.timedelta(days=1)
         return _to_utc_ms(candidate)
 
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": "weekday"}
+
+    def session_id(self, timestamp: int) -> str | None:
+        dt = _utcfromtimestamp(timestamp)
+        if dt.weekday() >= 5:
+            return None
+        return _session_label(dt.replace(hour=0, minute=0, second=0, microsecond=0))
+
+    def session_end(self, timestamp: int) -> int | None:
+        dt = _utcfromtimestamp(timestamp)
+        if dt.weekday() >= 5:
+            return None
+        midnight = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        return _to_utc_ms(midnight + datetime.timedelta(days=1))
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Exchange-backed calendar (equities, futures, commodities — holidays + DST)
@@ -234,6 +313,21 @@ class ExchangeCalendar(TradingCalendar):
         """Return the next session-open timestamp ≥ *timestamp*."""
         return _ts_to_ms(self._cal.next_open(_ms_to_ts(timestamp)))
 
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": "exchange", "exchange": self._exchange}
+
+    def session_id(self, timestamp: int) -> str | None:
+        ts = _ms_to_ts(timestamp)
+        if not self._cal.is_open_on_minute(ts):
+            return None
+        return str(self._cal.minute_to_session(ts).date())
+
+    def session_end(self, timestamp: int) -> int | None:
+        ts = _ms_to_ts(timestamp)
+        if not self._cal.is_open_on_minute(ts):
+            return None
+        return _ts_to_ms(self._cal.session_close(self._cal.minute_to_session(ts)))
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Internal helpers
@@ -250,6 +344,11 @@ def _utcfromtimestamp(ts_ms: int) -> datetime.datetime:
 def _session_open(dt: datetime.datetime, start_hour: int, start_minute: int) -> datetime.datetime:
     """Return the session-open datetime for the UTC day of *dt*."""
     return dt.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
+
+
+def _session_label(open_dt: datetime.datetime) -> str:
+    """Stable ISO-8601 (seconds, UTC) label for a session open."""
+    return open_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _to_utc_ms(dt: datetime.datetime) -> int:

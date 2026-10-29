@@ -71,10 +71,14 @@ class MinuteVolatilityBarConstructor(BaseMinuteBarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> MinuteVolatilityBarConstructor:
         acc = MinuteVolatilityAccumulator(bar_type=state["bar_type"])
         est = StaticThresholdEstimator.from_state(state["threshold_estimator"])
-        return super().from_state(state, acc, est, calendar, schema)  # type: ignore[return-value]
+        return super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[return-value]
 
 
 class MinuteRangeBarConstructor(BaseMinuteBarConstructor):
@@ -125,10 +129,14 @@ class MinuteRangeBarConstructor(BaseMinuteBarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> MinuteRangeBarConstructor:
         acc = MinuteRangeAccumulator(bar_type=state["bar_type"])
         est = StaticThresholdEstimator.from_state(state["threshold_estimator"])
-        return super().from_state(state, acc, est, calendar, schema)  # type: ignore[return-value]
+        return super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[return-value]
 
 
 class MinuteRenkoBarConstructor(BaseMinuteBarConstructor):
@@ -179,10 +187,14 @@ class MinuteRenkoBarConstructor(BaseMinuteBarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> MinuteRenkoBarConstructor:
         acc = MinuteRenkoAccumulator(bar_type=state["bar_type"])
         est = StaticThresholdEstimator.from_state(state["threshold_estimator"])
-        return super().from_state(state, acc, est, calendar, schema)  # type: ignore[return-value]
+        return super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[return-value]
 
 
 class MinuteHybridBarConstructor(BaseMinuteBarConstructor):
@@ -248,6 +260,8 @@ class MinuteHybridBarConstructor(BaseMinuteBarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> MinuteHybridBarConstructor:
         acc_state = state["accumulator"]
         acc = MinuteHybridAccumulator(
@@ -256,7 +270,9 @@ class MinuteHybridBarConstructor(BaseMinuteBarConstructor):
             volatility_threshold=acc_state.get("volatility_threshold", 0.0),
         )
         est = StaticThresholdEstimator.from_state(state["threshold_estimator"])
-        return super().from_state(state, acc, est, calendar, schema)  # type: ignore[return-value]
+        return super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[return-value]
 
 
 def compute_volatility_bars_from_minutes(

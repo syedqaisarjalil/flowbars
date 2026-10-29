@@ -64,9 +64,15 @@ ctor2.update(tick_already_processed)  # -> None (deduplicated)
 State is versioned (`schema_version`/`engine_version`) and carries the full
 params plus a SHA-256 params hash, so resuming with a mismatched threshold,
 multiplier, volume type, or session policy raises `StateValidationError`
-instead of silently changing bar semantics.  Tick and minute state can never
-be cross-loaded (`input_kind` is validated).  `update_many(df)` streams a whole
-DataFrame through the same `update()` path.
+instead of silently changing bar semantics.  The state also records the
+canonical registry key (`registry_name`), the calendar identity
+(`calendar` + `calendar_fingerprint`), the input column mapping
+(`schema_mapping` + `schema_fingerprint`), and the active session
+(`session_id`, `last_session_end`, `in_session`).  Resuming with a different
+calendar or schema mapping therefore fails loudly — pass
+`verify_identity=False` to `load_state()` / `from_state()` to opt out.
+Tick and minute state can never be cross-loaded (`input_kind` is validated).
+`update_many(df)` streams a whole DataFrame through the same `update()` path.
 
 ### Warm-up contract
 
@@ -108,12 +114,33 @@ from flowbars.bars.registry import BarRegistry
 BarRegistry.list()  # ['dollar', 'imbalance_tick', ...]
 spec = BarRegistry.get_spec("volume")
 spec.params_schema  # JSON Schema for constructor params
-spec.output_columns  # the exact output contract
+spec.output_columns  # core_columns + extras_columns
+spec.core_columns  # the 13 contract columns
+spec.extras_columns  # typed bar-specific extras ({} for built-ins)
 spec.session_policies  # ('close',)
 spec.state_schema_version  # 2
+spec.spec_version  # output-contract version (pin with params_hash)
+spec.warmup_minutes  # recommended warmup; 0 = none required
 ```
 
-`MinuteBarRegistry` mirrors this for the `minute_*` types.
+`MinuteBarRegistry` mirrors this for the `minute_*` types.  The registry key
+is the canonical identity (`minute_volume`), while each row's `bar_type`
+label is the shorter family name (`volume`); `frame.attrs["registry_name"]`
+and `state["registry_name"]` carry the unambiguous key.
+
+Rebuild any registered type from saved state without knowing its concrete
+constructor:
+
+```python
+resumed = BarRegistry.constructor_from_state("volume", state, schema=schema)
+resumed_minute = MinuteBarRegistry.constructor_from_state(
+    "minute_renko", state, schema=minute_schema
+)
+```
+
+Pin a downstream contract with `params_hash(params)` (canonical JSON: sorted
+keys, no whitespace, NaN/Infinity rejected) — frame attrs expose
+`(registry_name, spec_version, params_hash)` for exactly this.
 
 ### Dual backend
 
@@ -481,6 +508,7 @@ the free, drop-in proxy.
 | `compute_run_dollar_bars(df, ...)` | DataFrame | Dollar-run bars |
 | `load_sample_data()` | DataFrame | Bundled 500-tick sample |
 | `bar_quality_report(bars)` | dict | Statistical diagnostics |
+| `params_hash(params)` | str | Canonical SHA-256 of a params dict |
 
 All `compute_*_bars` functions also accept keyword-only `warmup_bars` /
 `warmup_minutes`, `backend`, `stream_id`, `multiplier`, `volume_type`,
@@ -493,12 +521,32 @@ with the same keyword surface.
 
 Every bar — tick or minute — has the same 13 columns: `bar_id`, `open`,
 `high`, `low`, `close`, `volume`, `dollar_value`, `vwap`, `num_ticks`,
-`open_ts`, `close_ts`, `bar_type`, `partial`.  `partial` is `True` only for
-session-boundary force-closes.  Returned DataFrames carry series metadata in
-`DataFrame.attrs` (bar type, params hash, input kind, engine/state version,
-multiplier, volume type, `approximate`).  `multiplier` scales `dollar_value`
-(and the dollar/imbalance/run metrics) while `vwap` stays a price; `volume_type`
-(`base`/`quote`/`shares`/`contracts`/`tick`) is metadata.
+`open_ts`, `close_ts`, `bar_type`, `partial`.  All are **core** columns
+(`spec.core_columns`); registered extras, if any, are appended and typed
+(`spec.extras_columns`).  `partial` is `True` only for session-boundary
+force-closes.  Returned DataFrames carry series metadata in `DataFrame.attrs`
+(`bar_type`, `registry_name`, `params_hash`, `spec_version`, input kind,
+engine/state version, multiplier, volume type, `approximate`).  `multiplier`
+scales `dollar_value` (and the dollar/imbalance/run metrics) while `vwap`
+stays a price; `volume_type` (`base`/`quote`/`shares`/`contracts`/`tick`) is
+metadata.
+
+Timestamp conventions:
+
+* `open_ts` is the timestamp of the bar's first input — the **stable bar
+  identity**.  It is unique within a series (`validate_bar_frame` enforces
+  this).  `bar_id` is run-local and resets when you rebuild from source, so
+  key downstream rows on `open_ts`, not `bar_id`.
+* `close_ts` is the last input that completed a threshold/time bar, or the
+  crossing minute's open timestamp on the minute path.
+* For `partial=True` bars, `close_ts` is the **session boundary** (session
+  close or next open), i.e. the instant the bar's information became
+  available.
+
+Input timestamps must be integer Unix epoch **milliseconds** (integral
+floats are accepted and cast; `datetime64`/tz-aware columns raise
+`SchemaError` with a conversion hint).  Pass `validate=True` to
+`batch()` / `update_many()` to run `validate_bar_frame` on the returned frame.
 
 ### Core classes
 

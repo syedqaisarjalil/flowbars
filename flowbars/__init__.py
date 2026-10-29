@@ -6,7 +6,7 @@ Information-driven bars: imbalance, run (tick, volume, dollar variants).
 
 # Public API — batch convenience functions (populated as bar types are registered)
 from flowbars._version import __version__  # noqa: F401
-from flowbars.bars.constructor import BaseBarConstructor
+from flowbars.bars.constructor import BaseBarConstructor, params_hash
 from flowbars.bars.information import (  # noqa: F401 — triggers @register_bar side-effects
     ImbalanceDollarBarConstructor,
     ImbalanceTickBarConstructor,
@@ -138,6 +138,7 @@ __all__ = [
     "WeekdayCalendar",
     "bar_quality_report",
     "load_sample_data",
+    "params_hash",
     "validate_bar_frame",
     "compute_dollar_bars",
     "compute_dollar_bars_from_minutes",

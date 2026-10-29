@@ -17,9 +17,13 @@ import inspect
 import types
 import typing
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, ClassVar
+from typing import Any, Callable, ClassVar, cast
 
-from flowbars.bars.constructor import _OUTPUT_COLUMNS, _STATE_SCHEMA_VERSION
+from flowbars.bars.constructor import (
+    _OUTPUT_COLUMNS,
+    _OUTPUT_CONTRACT_VERSION,
+    _STATE_SCHEMA_VERSION,
+)
 
 # Parameters every constructor accepts that can be expressed as JSON.
 _COMMON_JSON_PARAMS: dict[str, dict[str, Any]] = {
@@ -62,19 +66,29 @@ class BarTypeSpec:
         JSON Schema (draft-compatible subset) for constructor parameters.
     output_columns : tuple[str, ...]
         Columns of the frame returned by ``batch`` / ``update_many``.
+        Always equal to ``core_columns + tuple(extras_columns)``.
+    core_columns : tuple[str, ...]
+        The contract columns every bar type emits (``dollar_value``,
+        ``vwap``, and ``num_ticks`` are core).
     extras_columns : dict[str, str]
-        Bar-type-specific numeric extras and their types (name → ``"float64"``).
+        Bar-type-specific numeric extras and their numeric types
+        (name → e.g. ``"float64"``).  Empty for all built-in types.
     streaming : bool
         Whether the constructor supports single-item ``update()``.
     state_schema_version : int
         Version of the JSON state contract written by this bar type.
+    spec_version : int
+        Version of the public output contract (columns + frame attrs).
+        Consumers can pin ``(bar_type, spec_version, params_hash)``.
     session_policies : tuple[str, ...]
         Session-boundary policies this bar type supports.
     warmup_minutes : int
         Recommended warmup duration in minutes before bars are trusted
         (from the constructor's ``recommended_warmup_minutes`` class
         attribute; distinct from the ``warmup_minutes`` runtime parameter,
-        which appears in ``params_schema``).
+        which appears in ``params_schema``).  ``0`` means "no warmup
+        required" — the bar type works on the first emitted bar; it does
+        not mean "warm up for zero minutes by default".
     volume_types : tuple[str, ...]
         Volume semantics supported for this bar type.
     approximate : bool
@@ -90,15 +104,26 @@ class BarTypeSpec:
     input_kinds: tuple[str, ...]
     params_schema: dict[str, Any]
     output_columns: tuple[str, ...] = tuple(_OUTPUT_COLUMNS)
+    core_columns: tuple[str, ...] = tuple(_OUTPUT_COLUMNS)
     extras_columns: dict[str, str] = field(default_factory=dict)
     streaming: bool = True
     state_schema_version: int = _STATE_SCHEMA_VERSION
+    spec_version: int = _OUTPUT_CONTRACT_VERSION
     session_policies: tuple[str, ...] = ("close",)
     warmup_minutes: int = 0
     volume_types: tuple[str, ...] = ("base", "quote", "shares", "contracts", "tick")
     approximate: bool = False
     description: str = ""
     batch_function: str | None = None
+
+    def __post_init__(self) -> None:
+        if tuple(self.output_columns) != tuple(self.core_columns) + tuple(self.extras_columns):
+            raise ValueError(
+                "output_columns must equal core_columns + extras_columns; got "
+                f"output_columns={tuple(self.output_columns)!r}, "
+                f"core_columns={tuple(self.core_columns)!r}, "
+                f"extras_columns={tuple(self.extras_columns)!r}"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation of the spec."""
@@ -107,9 +132,11 @@ class BarTypeSpec:
             "input_kinds": list(self.input_kinds),
             "params_schema": self.params_schema,
             "output_columns": list(self.output_columns),
+            "core_columns": list(self.core_columns),
             "extras_columns": dict(self.extras_columns),
             "streaming": self.streaming,
             "state_schema_version": self.state_schema_version,
+            "spec_version": self.spec_version,
             "session_policies": list(self.session_policies),
             "warmup_minutes": self.warmup_minutes,
             "volume_types": list(self.volume_types),
@@ -253,6 +280,9 @@ class BarTypeSpecRegistry:
         cls._constructors[name] = constructor_cls
         if batch_fn is not None:
             cls._batch_functions[name] = batch_fn
+        # Canonical identity used in frame attrs and saved state.  The emitted
+        # ``bar_type`` label may be shorter and is not unique across registries.
+        cast(Any, constructor_cls).registry_name = name
         cls._specs[name] = (
             spec if spec is not None else build_bar_type_spec(name, constructor_cls, batch_fn)
         )
@@ -277,6 +307,42 @@ class BarTypeSpecRegistry:
         if name not in cls._specs:
             raise KeyError(f"Unknown {cls._label.lower()}: {name!r}. Available: {cls.list()}")
         return cls._specs[name]
+
+    @classmethod
+    def constructor_from_state(
+        cls,
+        name: str,
+        state: dict[str, Any],
+        *,
+        schema: Any = None,
+        calendar: Any = None,
+        verify_identity: bool = True,
+    ) -> Any:
+        """Rebuild the constructor registered under *name* from saved *state*.
+
+        Uniform entry point — callers do not need to know the bar type's
+        concrete constructor or its ``from_state`` signature.
+
+        Parameters
+        ----------
+        name : str
+            Registry key (e.g. ``"volume"`` or ``"minute_renko"``).
+        state : dict
+            State previously returned by ``get_state``.
+        schema : SchemaMapping or MinuteSchemaMapping, optional
+            Input mapping; must match the one recorded in the state.
+        calendar : TradingCalendar, optional
+            Must match the one recorded in the state (default: continuous).
+        verify_identity : bool, default True
+            Pass ``False`` to resume despite a calendar/schema mismatch.
+        """
+        constructor_cls = cast(Any, cls.get_constructor(name))
+        return constructor_cls.from_state(
+            state,
+            calendar=calendar,
+            schema=schema,
+            verify_identity=verify_identity,
+        )
 
     @classmethod
     def list_specs(cls) -> list[BarTypeSpec]:

@@ -68,11 +68,15 @@ class MinuteVolumeBarConstructor(BaseMinuteBarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> MinuteVolumeBarConstructor:
         """Reconstruct a ``MinuteVolumeBarConstructor`` from a saved state dict."""
         acc = MinuteVolumeAccumulator(bar_type="volume")
         est = StaticThresholdEstimator.from_state(state["threshold_estimator"])
-        return super().from_state(state, acc, est, calendar, schema)  # type: ignore[return-value]
+        return super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[return-value]
 
 
 class MinuteDollarBarConstructor(BaseMinuteBarConstructor):
@@ -126,11 +130,15 @@ class MinuteDollarBarConstructor(BaseMinuteBarConstructor):
         state: dict[str, Any],
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> MinuteDollarBarConstructor:
         """Reconstruct a ``MinuteDollarBarConstructor`` from a saved state dict."""
         acc = MinuteDollarAccumulator(bar_type="dollar")
         est = StaticThresholdEstimator.from_state(state["threshold_estimator"])
-        return super().from_state(state, acc, est, calendar, schema)  # type: ignore[return-value]
+        return super().from_state(
+            state, acc, est, calendar, schema, verify_identity=verify_identity
+        )  # type: ignore[return-value]
 
 
 def compute_volume_bars_from_minutes(

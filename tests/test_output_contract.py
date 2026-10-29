@@ -113,7 +113,9 @@ class TestSessionPartial:
         assert bar is not None
         assert bar.partial is True
         assert bar.open_ts == ts1
-        assert bar.close_ts == ts2  # last in-session tick, not the boundary tick
+        # Partial bars end at the session boundary (16:00), not the first
+        # out-of-session tick that revealed the close.
+        assert bar.close_ts == _ms(day.replace(hour=16, minute=0))
         assert bar.num_ticks == 2
 
     def test_threshold_bar_not_partial(self) -> None:

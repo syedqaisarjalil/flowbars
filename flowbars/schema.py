@@ -6,6 +6,8 @@ columns map to which fields.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 import numpy as np
@@ -90,6 +92,43 @@ def validate_side_array(sides: npt.NDArray[np.float64]) -> None:
         raise TickDataError(f"Side at row {i} is invalid: {sides[i]!r}. Must be +1, -1, or NaN.")
 
 
+def validate_timestamps_array(timestamps: npt.NDArray[Any]) -> None:
+    """Raise SchemaError unless timestamps are integer Unix epoch milliseconds.
+
+    Timestamps are UTC milliseconds throughout flowbars.  ``datetime64``
+    columns (or anything non-integer) are rejected with an explicit message
+    rather than failing later inside bar construction.
+    """
+    if len(timestamps) == 0 or timestamps.dtype.kind in ("i", "u"):
+        return
+    if timestamps.dtype.kind == "f" and bool(
+        np.all(np.isfinite(timestamps)) and np.all(timestamps == np.floor(timestamps))
+    ):
+        # Integral-valued floats are unambiguous; callers cast them to int64.
+        return
+    raise SchemaError(
+        "timestamps must be integer Unix epoch milliseconds; got dtype "
+        f"{timestamps.dtype}. Convert with "
+        "`(df['ts'] - pd.Timestamp('1970-01-01', tz='UTC')) "
+        "// pd.Timedelta('1ms')`."
+    )
+
+
+def _extract_timestamps(series: pd.Series) -> npt.NDArray[Any]:
+    """Extract, validate, and integer-normalize the timestamp column."""
+    timestamps: npt.NDArray[Any] = np.asarray(series.to_numpy())
+    validate_timestamps_array(timestamps)
+    if timestamps.dtype.kind == "f":
+        timestamps = timestamps.astype(np.int64)
+    return timestamps
+
+
+def _mapping_fingerprint(mapping: dict[str, str]) -> str:
+    """Stable identity hash of a column mapping."""
+    blob = json.dumps(mapping, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
 # ── SchemaMapping ────────────────────────────────────────────────────────────
 
 
@@ -152,6 +191,14 @@ class SchemaMapping:
         """True if a side column was provided in the schema."""
         return "side" in self._mapping
 
+    def to_dict(self) -> dict[str, str]:
+        """Return the internal-field → column-name mapping."""
+        return dict(self._mapping)
+
+    def fingerprint(self) -> str:
+        """Stable identity hash of the column mapping."""
+        return _mapping_fingerprint(self._mapping)
+
     # -- DataFrame extraction (batch path) --
 
     def validate_columns(self, columns: set[str]) -> None:
@@ -199,7 +246,7 @@ class SchemaMapping:
         """
         self.validate_columns(set(df.columns))
 
-        timestamps: npt.NDArray[Any] = np.asarray(df[self.timestamp_col].to_numpy())
+        timestamps: npt.NDArray[Any] = _extract_timestamps(df[self.timestamp_col])
         prices_arr = df[self.price_col].to_numpy(dtype=np.float64, na_value=np.nan)
         volumes_arr = df[self.volume_col].to_numpy(dtype=np.float64, na_value=np.nan)
 
@@ -343,6 +390,14 @@ class MinuteSchemaMapping:
     def has_side(self) -> bool:
         return "side" in self._mapping
 
+    def to_dict(self) -> dict[str, str]:
+        """Return the internal-field → column-name mapping."""
+        return dict(self._mapping)
+
+    def fingerprint(self) -> str:
+        """Stable identity hash of the column mapping."""
+        return _mapping_fingerprint(self._mapping)
+
     def validate_columns(self, columns: set[str]) -> None:
         """Check that all mapped columns exist in the input."""
         for field, col in self._mapping.items():
@@ -382,7 +437,7 @@ class MinuteSchemaMapping:
         """
         self.validate_columns(set(df.columns))
 
-        timestamps: npt.NDArray[Any] = np.asarray(df[self.timestamp_col].to_numpy())
+        timestamps: npt.NDArray[Any] = _extract_timestamps(df[self.timestamp_col])
         opens = df[self.open_col].to_numpy(dtype=np.float64, na_value=np.nan)
         highs = df[self.high_col].to_numpy(dtype=np.float64, na_value=np.nan)
         lows = df[self.low_col].to_numpy(dtype=np.float64, na_value=np.nan)

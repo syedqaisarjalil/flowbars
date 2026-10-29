@@ -54,12 +54,24 @@ _OUTPUT_COLUMNS = [
 # persisted warmup/ordering settings; v1 states remain loadable.
 _STATE_SCHEMA_VERSION = 2
 _ENGINE_VERSION = _version_string
+# Version of the public output contract (columns + frame attrs).  Consumers
+# can pin ``(bar_type, spec_version, params_hash)``.
+_OUTPUT_CONTRACT_VERSION = 1
 
 
-def _params_hash(params: dict[str, Any]) -> str:
-    """Stable SHA-256 of a params dict (canonical JSON, sorted keys)."""
+def params_hash(params: dict[str, Any]) -> str:
+    """Stable SHA-256 hex digest of a params dict.
+
+    Canonical JSON rules: keys sorted, separators ``(",", ":")`` (no
+    whitespace), NaN/Infinity rejected.  Two equal parameter sets therefore
+    always hash identically regardless of insertion order.
+    """
     blob = json.dumps(params, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+# Backwards-compatible internal alias (imported by existing tests).
+_params_hash = params_hash
 
 
 def _bars_to_frame(bars: list[Bar]) -> pd.DataFrame:
@@ -179,6 +191,10 @@ class BaseBarConstructor:
     # Recommended warm-up duration advertised in the registry spec (metadata
     # only; the runtime warmup is the ``warmup_bars``/``warmup_minutes`` param).
     recommended_warmup_minutes: ClassVar[int] = 0
+    # Canonical registry key (e.g. ``"minute_volume"``), set at registration.
+    # The emitted ``bar_type`` label can be shorter (e.g. ``"volume"``); this
+    # attribute is the unambiguous identity.
+    registry_name: ClassVar[str | None] = None
 
     def __init__(
         self,
@@ -239,6 +255,8 @@ class BaseBarConstructor:
         self._pending_bars: collections.deque[Bar] = collections.deque()
         self._last_watermark: int | None = None  # dedup watermark of last accepted tick
         self._last_timestamp: int | None = None  # timestamp of last accepted tick (ordering)
+        self._session_id: str | None = None  # calendar session of the last in-session input
+        self._last_session_end: int | None = None  # its close instant (Unix ms)
 
         # Snapshots used to detect a resumed/partially-consumed constructor, in
         # which case the numba batch kernels (which assume a zero start) fall
@@ -286,8 +304,9 @@ class BaseBarConstructor:
         if is_boundary == self._in_session:
             if self._accumulator._has_tick and self._session_policy != "carry":
                 if self._session_policy == "close":
-                    # Force-close the in-progress bar as a partial bar.
-                    self._emit_bar()
+                    # Force-close the in-progress bar as a partial bar.  Its
+                    # close_ts is the session boundary, not this input's ts.
+                    self._emit_bar(close_ts=self._session_transition_ts(item, is_boundary))
                 else:  # "discard"
                     self._discard_bar()
             # A session gap never contributes a price return: reset carried
@@ -302,6 +321,13 @@ class BaseBarConstructor:
         self._ingest_input(item)
         self._last_watermark = wm
         self._last_timestamp = item.timestamp
+        if not is_boundary:
+            session_id = self._calendar.session_id(item.timestamp)
+            if session_id is not None:
+                self._session_id = session_id
+            session_end = self._calendar.session_end(item.timestamp)
+            if session_end is not None:
+                self._last_session_end = session_end
 
         # 4. Update threshold estimator (no-op for static, also no-op for EWMA)
         self._threshold_estimator.update(item)
@@ -332,7 +358,7 @@ class BaseBarConstructor:
             return self._pending_bars.popleft()
         return None
 
-    def update_many(self, ticks_df: pd.DataFrame) -> pd.DataFrame:
+    def update_many(self, ticks_df: pd.DataFrame, *, validate: bool = False) -> pd.DataFrame:
         """Stream every row of *ticks_df* through :meth:`update`.
 
         Equivalent to calling :meth:`update` once per row: the same schema
@@ -346,6 +372,9 @@ class BaseBarConstructor:
         ----------
         ticks_df : pd.DataFrame
             Ticks (or minute candles) with user-mapped column names.
+        validate : bool, default False
+            Run :func:`~flowbars.bars.output.validate_bar_frame` on the
+            returned frame (raises :class:`BarContractError` on violation).
 
         Returns
         -------
@@ -371,9 +400,9 @@ class BaseBarConstructor:
         while self._pending_bars:
             bars.append(self._pending_bars.popleft())
 
-        return self._frame(bars)
+        return self._maybe_validate(self._frame(bars), validate)
 
-    def batch(self, ticks_df: pd.DataFrame) -> pd.DataFrame:
+    def batch(self, ticks_df: pd.DataFrame, *, validate: bool = False) -> pd.DataFrame:
         """Feed all input rows from a DataFrame, return completed bars.
 
         Parameters
@@ -381,6 +410,9 @@ class BaseBarConstructor:
         ticks_df : pd.DataFrame
             Ticks (or minute candles) with user-mapped column names (see
             :class:`SchemaMapping` / :class:`MinuteSchemaMapping`).
+        validate : bool, default False
+            Run :func:`~flowbars.bars.output.validate_bar_frame` on the
+            returned frame (raises :class:`BarContractError` on violation).
 
         Returns
         -------
@@ -425,10 +457,18 @@ class BaseBarConstructor:
                 self._last_watermark = int(wm_arr[-1])
             if len(timestamps) > 0:
                 self._last_timestamp = int(timestamps[-1])
-            return result
+            return self._maybe_validate(result, validate)
 
         # ── Python path ─────────────────────────────────────────────────
-        return self._batch_python(arrays, wm_arr)
+        return self._maybe_validate(self._batch_python(arrays, wm_arr), validate)
+
+    def _maybe_validate(self, frame: pd.DataFrame, validate: bool) -> pd.DataFrame:
+        """Validate *frame* against the output contract when requested."""
+        if validate:
+            from flowbars.bars.output import validate_bar_frame
+
+            validate_bar_frame(frame)
+        return frame
 
     # ── numba batch path ──────────────────────────────────────────────────
 
@@ -594,10 +634,12 @@ class BaseBarConstructor:
         """Frame-level metadata identifying the series that produced it."""
         return {
             "bar_type": self._accumulator._bar_type,
+            "registry_name": self.registry_name,
             "params_hash": _params_hash(self.get_params()),
             "input_kind": self.input_kind,
             "engine_version": _ENGINE_VERSION,
             "state_schema_version": _STATE_SCHEMA_VERSION,
+            "spec_version": _OUTPUT_CONTRACT_VERSION,
             "multiplier": self.multiplier,
             "volume_type": self.volume_type,
             "approximate": self.approximate,
@@ -798,6 +840,7 @@ class BaseBarConstructor:
             "input_kind": self.input_kind,
             "stream_id": self._stream_id,
             "bar_type": self._accumulator._bar_type,
+            "registry_name": self.registry_name,
             "backend": self._backend,
             "watermark_key": self._watermark_key,
             "warmup_bars": self._warmup_bars,
@@ -806,6 +849,12 @@ class BaseBarConstructor:
             "strict_ordering": self._strict_ordering,
             "session_policy": self._session_policy,
             "session_estimator": self._session_estimator,
+            "session_id": self._session_id,
+            "last_session_end": self._last_session_end,
+            "calendar": self._calendar.to_dict(),
+            "calendar_fingerprint": self._calendar.fingerprint(),
+            "schema_mapping": None if self._schema is None else self._schema.to_dict(),
+            "schema_fingerprint": None if self._schema is None else self._schema.fingerprint(),
             "params": params,
             "params_hash": _params_hash(params),
             "last_watermark": self._last_watermark,
@@ -818,15 +867,60 @@ class BaseBarConstructor:
         state.update(self._extra_state())
         return state
 
-    def load_state(self, state: dict[str, Any]) -> None:
+    def _verify_saved_identity(self, state: dict[str, Any]) -> None:
+        """Reject state written against a different registry key, calendar, or schema."""
+        saved_registry = state.get("registry_name")
+        if (
+            saved_registry is not None
+            and self.registry_name is not None
+            and saved_registry != self.registry_name
+        ):
+            raise StateValidationError(
+                f"registry_name mismatch: state has {saved_registry!r}, "
+                f"constructor has {self.registry_name!r}"
+            )
+
+        saved_calendar_fp = state.get("calendar_fingerprint")
+        if saved_calendar_fp is not None:
+            calendar_fp = self._calendar.fingerprint()
+            if saved_calendar_fp != calendar_fp:
+                raise StateValidationError(
+                    f"calendar mismatch: state was built with {state.get('calendar')!r} "
+                    f"(fingerprint {saved_calendar_fp}), constructor has "
+                    f"{self._calendar.to_dict()!r} (fingerprint {calendar_fp}). "
+                    "Pass the same calendar or use verify_identity=False."
+                )
+
+        saved_schema_fp = state.get("schema_fingerprint")
+        if saved_schema_fp is not None and self._schema is not None:
+            schema_fp = self._schema.fingerprint()
+            if saved_schema_fp != schema_fp:
+                raise StateValidationError(
+                    f"schema mapping mismatch: state was built with "
+                    f"{state.get('schema_mapping')!r}, constructor has "
+                    f"{self._schema.to_dict()!r}. Pass the same schema or use "
+                    "verify_identity=False."
+                )
+
+    def load_state(self, state: dict[str, Any], *, verify_identity: bool = True) -> None:
         """Restore constructor state from a saved state dict.
 
         Validates stream identity and schema version before applying state.
 
+        Parameters
+        ----------
+        state : dict
+            State previously returned by :meth:`get_state`.
+        verify_identity : bool, default True
+            Also require the calendar and schema column mapping to match the
+            ones recorded in the state.  Pass ``False`` to opt out (e.g. when
+            intentionally replaying state under a different input mapping).
+
         Raises
         ------
         StateValidationError
-            If *stream_id*, *bar_type*, or *schema_version* is incompatible.
+            If *stream_id*, *bar_type*, *registry_name*, *schema_version*,
+            calendar, or schema mapping is incompatible.
         """
         # Version check
         version = state.get("schema_version", 0)
@@ -865,6 +959,9 @@ class BaseBarConstructor:
                 f"constructor has {self._watermark_key!r}"
             )
 
+        if verify_identity:
+            self._verify_saved_identity(state)
+
         saved_engine = state.get("engine_version")
         if (
             saved_engine is not None
@@ -902,6 +999,8 @@ class BaseBarConstructor:
         self._threshold_estimator.load_state(state["threshold_estimator"])
         self._bars_emitted = state.get("bars_emitted", 0)
         self._in_session = state.get("in_session", True)
+        self._session_id = state.get("session_id", self._session_id)
+        self._last_session_end = state.get("last_session_end", self._last_session_end)
         self._last_watermark = state["last_watermark"]
         self._last_timestamp = state.get("last_timestamp")
         if version >= 2:
@@ -928,6 +1027,8 @@ class BaseBarConstructor:
         threshold_estimator: ThresholdEstimator,
         calendar: TradingCalendar | None = None,
         schema: SchemaMapping | MinuteSchemaMapping | None = None,
+        *,
+        verify_identity: bool = True,
     ) -> BaseBarConstructor:
         """Create a new constructor instance from a saved state dict.
 
@@ -950,7 +1051,13 @@ class BaseBarConstructor:
         threshold_estimator : ThresholdEstimator
             Fresh instance of the correct estimator type.
         calendar : TradingCalendar, optional
+            Must match the calendar recorded in the state (the default
+            :class:`ContinuousCalendar` is used when omitted).
         schema : SchemaMapping or MinuteSchemaMapping, optional
+            Must match the schema recorded in the state when provided.
+        verify_identity : bool, default True
+            Require the saved registry key, calendar, and schema mapping to
+            match.  Pass ``False`` to resume under a different configuration.
 
         Returns
         -------
@@ -984,6 +1091,8 @@ class BaseBarConstructor:
         inst._pending_bars = collections.deque()
         inst._last_watermark = None
         inst._last_timestamp = None
+        inst._session_id = state.get("session_id")
+        inst._last_session_end = state.get("last_session_end")
         # Volume semantics live in the accumulator state; restore them before
         # params validation so the identity check sees the right multiplier.
         acc_state = state.get("accumulator") or {}
@@ -996,7 +1105,7 @@ class BaseBarConstructor:
         # Subclass params (e.g. min_run_length) are not passed through this
         # path — seed them from the state before validating params identity.
         inst._load_extra_state(state)
-        inst.load_state(state)
+        inst.load_state(state, verify_identity=verify_identity)
         return inst
 
     # ── internal helpers ────────────────────────────────────────────────
@@ -1022,24 +1131,44 @@ class BaseBarConstructor:
         """
         return True
 
-    def _emit_bar(self) -> None:
+    def _session_transition_ts(self, item: TickInfo | MinuteInfo, is_boundary: bool) -> int:
+        """The instant a session-boundary force-close logically happens.
+
+        Leaving a session: that session's close.  Entering a session: the
+        open.  Falls back to the calendar's ``next_session_open`` when the
+        calendar cannot describe the boundary.
+        """
+        ref = self._last_timestamp if self._last_timestamp is not None else item.timestamp
+        if is_boundary:
+            session_end = self._calendar.session_end(ref)
+            if session_end is not None:
+                return session_end
+        return self._calendar.next_session_open(ref)
+
+    def _emit_bar(self, close_ts: int | None = None) -> None:
         """Force-close the current bar and queue it for return.
 
         Does NOT call ``on_bar_close`` on the estimator — session-boundary
         closures are artificial and should not influence the adaptive
         threshold.  Price-state resets are applied by the caller after this
         returns (see :meth:`update`).
+
+        ``close_ts`` overrides the accumulator's close timestamp; session
+        force-closes pass the session boundary so a partial bar's
+        ``close_ts`` is the instant its information became available.
         """
         threshold = self._threshold_estimator.current_threshold
         bar = self._accumulator.close(threshold)
         bar.partial = True
+        if close_ts is not None:
+            bar.close_ts = max(close_ts, bar.open_ts)
         self._bars_emitted += 1
 
         if self._on_bar is not None:
             self._on_bar(bar)
 
         # Warmup check + subclass filter (e.g. min_run_length)
-        if self._bars_emitted > self._warmup_bars and self._should_return(bar):
+        if self._past_warmup(bar.close_ts) and self._should_return(bar):
             self._pending_bars.append(bar)
 
     def _discard_bar(self) -> None:
