@@ -62,9 +62,12 @@ class TimeBarConstructor(BaseBarConstructor):
         stream_id: str = "default",
         strict_ordering: bool = False,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         backend: Literal["python", "numba"] = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
     ) -> None:
         accumulator = TimeAccumulator(
             bar_type="time",
@@ -84,9 +87,12 @@ class TimeBarConstructor(BaseBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
         )
 
     @classmethod
@@ -118,10 +124,13 @@ def compute_time_bars(
     calendar: TradingCalendar | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: Literal["python", "numba"] = "python",
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
 ) -> pd.DataFrame:
     """Build time bars from a DataFrame of ticks.
 
@@ -165,9 +174,12 @@ def compute_time_bars(
         stream_id=stream_id,
         strict_ordering=strict_ordering,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
     )
     return ctor.batch(ticks_df)
 

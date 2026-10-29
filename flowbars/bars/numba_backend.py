@@ -95,6 +95,7 @@ def _tick_bars_numba(
     prices: np.ndarray,
     volumes: np.ndarray,
     threshold: float,
+    multiplier: float,
 ) -> np.ndarray:
     """Numba kernel for tick bars (static threshold)."""
     n = len(timestamps)
@@ -133,13 +134,13 @@ def _tick_bars_numba(
 
         close_val = price
         vol += vol_i
-        dollar_val += price * vol_i
+        dollar_val += price * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
         cum_ticks += 1.0
 
         if cum_ticks >= threshold:
-            vwap = dollar_val / vol if vol > 0.0 else 0.0
+            vwap = dollar_val / (vol * multiplier) if vol > 0.0 else 0.0
             # Inline emit
             out[bar_count, _COL_BAR_ID] = bar_id
             out[bar_count, _COL_OPEN] = open_val
@@ -179,6 +180,7 @@ def _volume_bars_numba(
     prices: np.ndarray,
     volumes: np.ndarray,
     threshold: float,
+    multiplier: float,
 ) -> np.ndarray:
     """Numba kernel for volume bars (static threshold)."""
     n = len(timestamps)
@@ -217,13 +219,13 @@ def _volume_bars_numba(
 
         close_val = price
         vol += vol_i
-        dollar_val += price * vol_i
+        dollar_val += price * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
         cum_volume += vol_i
 
         if cum_volume >= threshold:
-            vwap = dollar_val / vol if vol > 0.0 else 0.0
+            vwap = dollar_val / (vol * multiplier) if vol > 0.0 else 0.0
             out[bar_count, _COL_BAR_ID] = bar_id
             out[bar_count, _COL_OPEN] = open_val
             out[bar_count, _COL_HIGH] = high_val
@@ -262,6 +264,7 @@ def _dollar_bars_numba(
     prices: np.ndarray,
     volumes: np.ndarray,
     threshold: float,
+    multiplier: float,
 ) -> np.ndarray:
     """Numba kernel for dollar bars (static threshold)."""
     n = len(timestamps)
@@ -300,13 +303,13 @@ def _dollar_bars_numba(
 
         close_val = price
         vol += vol_i
-        dollar_val += price * vol_i
+        dollar_val += price * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
-        cum_dollar += price * vol_i
+        cum_dollar += price * vol_i * multiplier
 
         if cum_dollar >= threshold:
-            vwap = dollar_val / vol if vol > 0.0 else 0.0
+            vwap = dollar_val / (vol * multiplier) if vol > 0.0 else 0.0
             out[bar_count, _COL_BAR_ID] = bar_id
             out[bar_count, _COL_OPEN] = open_val
             out[bar_count, _COL_HIGH] = high_val
@@ -346,6 +349,7 @@ def _time_bars_numba(
     volumes: np.ndarray,
     interval_ms: int,
     anchor_code: int,
+    multiplier: float,
 ) -> np.ndarray:
     """Numba kernel for time bars.
 
@@ -402,12 +406,12 @@ def _time_bars_numba(
 
         close_val = price
         vol += vol_i
-        dollar_val += price * vol_i
+        dollar_val += price * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
         if ts >= next_boundary:
-            vwap = dollar_val / vol if vol > 0.0 else 0.0
+            vwap = dollar_val / (vol * multiplier) if vol > 0.0 else 0.0
             out[bar_count, _COL_BAR_ID] = bar_id
             out[bar_count, _COL_OPEN] = open_val
             out[bar_count, _COL_HIGH] = high_val
@@ -460,6 +464,7 @@ def _imbalance_bars_numba(
     sides: np.ndarray,
     threshold: float,
     metric_code: int,
+    multiplier: float,
 ) -> np.ndarray:
     """Numba kernel for imbalance bars (static threshold).
 
@@ -505,7 +510,7 @@ def _imbalance_bars_numba(
 
         close_val = price
         vol += vol_i
-        dollar_val += price * vol_i
+        dollar_val += price * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
@@ -517,11 +522,11 @@ def _imbalance_bars_numba(
             elif metric_code == 1:
                 metric_val = vol_i
             else:  # dollar
-                metric_val = price * vol_i
+                metric_val = price * vol_i * multiplier * multiplier
             signed_imbalance += side * metric_val
 
         if abs(signed_imbalance) >= threshold:
-            vwap = dollar_val / vol if vol > 0.0 else 0.0
+            vwap = dollar_val / (vol * multiplier) if vol > 0.0 else 0.0
             out[bar_count, _COL_BAR_ID] = bar_id
             out[bar_count, _COL_OPEN] = open_val
             out[bar_count, _COL_HIGH] = high_val
@@ -566,6 +571,7 @@ def _run_bars_numba(
     sides: np.ndarray,
     threshold: float,
     metric_code: int,
+    multiplier: float,
 ) -> np.ndarray:
     """Numba kernel for run bars (static threshold).
 
@@ -618,7 +624,7 @@ def _run_bars_numba(
 
         close_val = price
         vol += vol_i
-        dollar_val += price * vol_i
+        dollar_val += price * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
@@ -628,7 +634,7 @@ def _run_bars_numba(
         elif metric_code == 1:
             metric_val = vol_i
         else:  # dollar
-            metric_val = price * vol_i
+            metric_val = price * vol_i * multiplier
 
         if first_tick:
             first_tick = False
@@ -647,7 +653,7 @@ def _run_bars_numba(
 
         total = banked + run_cum
         if total >= threshold:
-            vwap = dollar_val / vol if vol > 0.0 else 0.0
+            vwap = dollar_val / (vol * multiplier) if vol > 0.0 else 0.0
             out[bar_count, _COL_BAR_ID] = bar_id
             out[bar_count, _COL_OPEN] = open_val
             out[bar_count, _COL_HIGH] = high_val
@@ -709,6 +715,7 @@ def _imbalance_bars_ewma_numba(
     alpha: float,
     initial_ewa_t: float,
     initial_ewa_proportion: float,
+    multiplier: float,
 ) -> np.ndarray:
     """Numba kernel for imbalance bars with in-loop EWMA threshold updates."""
     n = len(timestamps)
@@ -755,7 +762,7 @@ def _imbalance_bars_ewma_numba(
 
         close_val = price
         vol += vol_i
-        dollar_val += price * vol_i
+        dollar_val += price * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
@@ -765,11 +772,11 @@ def _imbalance_bars_ewma_numba(
             elif metric_code == 1:
                 metric_val = vol_i
             else:
-                metric_val = price * vol_i
+                metric_val = price * vol_i * multiplier * multiplier
             signed_imbalance += side * metric_val
 
         if abs(signed_imbalance) >= threshold_val:
-            vwap = dollar_val / vol if vol > 0.0 else 0.0
+            vwap = dollar_val / (vol * multiplier) if vol > 0.0 else 0.0
             out[bar_count, _COL_BAR_ID] = bar_id
             out[bar_count, _COL_OPEN] = open_val
             out[bar_count, _COL_HIGH] = high_val
@@ -837,6 +844,7 @@ def _run_bars_ewma_numba(
     alpha: float,
     initial_ewa_t: float,
     initial_ewa_proportion: float,
+    multiplier: float,
 ) -> np.ndarray:
     """Numba kernel for run bars with in-loop EWMA threshold updates."""
     n = len(timestamps)
@@ -895,7 +903,7 @@ def _run_bars_ewma_numba(
 
         close_val = price
         vol += vol_i
-        dollar_val += price * vol_i
+        dollar_val += price * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
@@ -904,7 +912,7 @@ def _run_bars_ewma_numba(
         elif metric_code == 1:
             metric_val = vol_i
         else:
-            metric_val = price * vol_i
+            metric_val = price * vol_i * multiplier
 
         if first_tick:
             first_tick = False
@@ -926,7 +934,7 @@ def _run_bars_ewma_numba(
 
         total = banked + run_cum
         if total >= threshold_val:
-            vwap = dollar_val / vol if vol > 0.0 else 0.0
+            vwap = dollar_val / (vol * multiplier) if vol > 0.0 else 0.0
             out[bar_count, _COL_BAR_ID] = bar_id
             out[bar_count, _COL_OPEN] = open_val
             out[bar_count, _COL_HIGH] = high_val
@@ -1033,6 +1041,7 @@ def numba_batch_static(
     threshold: float,
     interval_ms: int = 60000,
     anchor: str = "clock",
+    multiplier: float = 1.0,
 ) -> tuple[np.ndarray, str]:
     """Run the numba batch path for a static (fixed) threshold.
 
@@ -1052,6 +1061,8 @@ def numba_batch_static(
         For time bars only.
     anchor : str
         For time bars only: ``"clock"`` or ``"first_tick"``.
+    multiplier : float, default 1.0
+        Contract multiplier scaling ``dollar_value`` (``vwap`` stays a price).
 
     Returns
     -------
@@ -1067,6 +1078,7 @@ def numba_batch_static(
             volumes.astype(np.float64),
             interval_ms,
             anchor_code,
+            multiplier,
         )
         return bar_data, "time"
 
@@ -1096,6 +1108,7 @@ def numba_batch_static(
                 sides.astype(np.float64),
                 threshold,
                 metric_code,
+                multiplier,
             )
         else:  # run
             bar_data = _run_bars_numba(
@@ -1105,6 +1118,7 @@ def numba_batch_static(
                 sides.astype(np.float64),
                 threshold,
                 metric_code,
+                multiplier,
             )
         return bar_data, bar_type
 
@@ -1117,6 +1131,7 @@ def numba_batch_static(
         prices.astype(np.float64),
         volumes.astype(np.float64),
         threshold,
+        multiplier,
     )
     return bar_data, bar_type
 
@@ -1130,6 +1145,7 @@ def numba_batch_ewma(
     alpha: float,
     initial_ewa_t: float,
     initial_ewa_proportion: float,
+    multiplier: float = 1.0,
 ) -> tuple[np.ndarray, str]:
     """Run the numba batch path with in-loop EWMA threshold updates.
 
@@ -1152,6 +1168,8 @@ def numba_batch_ewma(
     initial_ewa_proportion : float
         Initial seed for the proportion component
         (:math:`|E[\\theta]|` for imbalance, :math:`E[P^+]` for run).
+    multiplier : float, default 1.0
+        Contract multiplier scaling ``dollar_value`` (``vwap`` stays a price).
 
     Returns
     -------
@@ -1179,6 +1197,7 @@ def numba_batch_ewma(
             alpha,
             initial_ewa_t,
             initial_ewa_proportion,
+            multiplier,
         )
     elif bar_type.startswith("run_"):
         bar_data = _run_bars_ewma_numba(
@@ -1190,6 +1209,7 @@ def numba_batch_ewma(
             alpha,
             initial_ewa_t,
             initial_ewa_proportion,
+            multiplier,
         )
     else:
         raise KeyError(f"No EWMA numba backend for bar type {bar_type!r}")

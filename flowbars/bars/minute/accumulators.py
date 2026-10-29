@@ -37,7 +37,7 @@ class MinuteDollarAccumulator(DollarAccumulator):
 
     def add_minute(self, minute: MinuteInfo) -> None:
         super().add_minute(minute)
-        self._cum_dollar += minute.close * minute.volume
+        self._cum_dollar += minute.close * minute.volume * self._multiplier
 
 
 class MinuteImbalanceAccumulator(ImbalanceAccumulator):
@@ -46,7 +46,9 @@ class MinuteImbalanceAccumulator(ImbalanceAccumulator):
     def add_minute(self, minute: MinuteInfo) -> None:
         super().add_minute(minute)
         if minute.side is not None and not math.isnan(minute.side):
-            self._signed_imbalance += minute.side * _minute_metric(minute, self._metric)
+            self._signed_imbalance += minute.side * _minute_metric(
+                minute, self._metric, self._multiplier
+            )
 
 
 class MinuteRunAccumulator(RunAccumulator):
@@ -55,7 +57,7 @@ class MinuteRunAccumulator(RunAccumulator):
     def add_minute(self, minute: MinuteInfo) -> None:
         super().add_minute(minute)
         side = minute.side if minute.side is not None else np.nan
-        self._accumulate_run(side, _minute_metric(minute, self._metric))
+        self._accumulate_run(side, _minute_metric(minute, self._metric, self._multiplier))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -93,6 +95,10 @@ class MinuteVolatilityAccumulator(BaseAccumulator):
         bar = self._emit_and_reset()
         self._cum_metric = max(0.0, self._cum_metric - threshold)
         return bar
+
+    def discard(self) -> None:
+        super().discard()
+        self._cum_metric = 0.0
 
     def get_close_stats(self) -> tuple[float, float]:
         return (self._cum_metric, 0.0)
@@ -138,6 +144,10 @@ class MinuteRangeAccumulator(BaseAccumulator):
         bar = self._emit_and_reset()
         self._cum_metric = max(0.0, self._cum_metric - threshold)
         return bar
+
+    def discard(self) -> None:
+        super().discard()
+        self._cum_metric = 0.0
 
     def get_close_stats(self) -> tuple[float, float]:
         return (self._cum_metric, 0.0)
@@ -185,6 +195,11 @@ class MinuteRenkoAccumulator(BaseAccumulator):
         self._displacement = 0.0
         return bar
 
+    def discard(self) -> None:
+        super().discard()
+        self._anchor = None
+        self._displacement = 0.0
+
     def get_close_stats(self) -> tuple[float, float]:
         return (self._displacement, 0.0)
 
@@ -231,7 +246,7 @@ class MinuteHybridAccumulator(BaseAccumulator):
 
     def add_minute(self, minute: MinuteInfo) -> None:
         super().add_minute(minute)
-        self._cum_dollar += minute.close * minute.volume
+        self._cum_dollar += minute.close * minute.volume * self._multiplier
         if self._prev_close is None or self._prev_close == 0.0:
             metric = 0.0
         else:
@@ -253,11 +268,22 @@ class MinuteHybridAccumulator(BaseAccumulator):
         self._cum_vol = max(0.0, self._cum_vol - self._volatility_threshold)
         return bar
 
+    def discard(self) -> None:
+        super().discard()
+        self._cum_dollar = 0.0
+        self._cum_vol = 0.0
+
     def get_close_stats(self) -> tuple[float, float]:
         return (self._cum_dollar, 0.0)
 
     def on_session_boundary(self) -> None:
         self._prev_close = None
+
+    def get_params(self) -> dict[str, Any]:
+        params = super().get_params()
+        params["dollar_threshold"] = self._dollar_threshold
+        params["volatility_threshold"] = self._volatility_threshold
+        return params
 
     def get_state(self) -> dict[str, Any]:
         state = super().get_state()

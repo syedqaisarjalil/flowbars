@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -32,9 +32,14 @@ class MinuteVolumeBarConstructor(BaseMinuteBarConstructor):
         stream_id: str = "default",
         strict_ordering: bool = False,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         backend: str = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
+        session_policy: Literal["close", "carry", "discard"] = "close",
+        session_estimator: Literal["persist", "reset"] = "persist",
     ) -> None:
         if threshold <= 0:
             raise ValueError(f"threshold must be positive, got {threshold}")
@@ -47,9 +52,14 @@ class MinuteVolumeBarConstructor(BaseMinuteBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
     @classmethod
@@ -68,6 +78,9 @@ class MinuteVolumeBarConstructor(BaseMinuteBarConstructor):
 class MinuteDollarBarConstructor(BaseMinuteBarConstructor):
     """Minute dollar bars: close when cumulative ``close × volume`` crosses a threshold."""
 
+    # close × volume is a per-minute notional proxy, not exact tick notional.
+    approximate = True
+
     def __init__(
         self,
         threshold: float,
@@ -77,9 +90,14 @@ class MinuteDollarBarConstructor(BaseMinuteBarConstructor):
         stream_id: str = "default",
         strict_ordering: bool = False,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         backend: str = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
+        session_policy: Literal["close", "carry", "discard"] = "close",
+        session_estimator: Literal["persist", "reset"] = "persist",
     ) -> None:
         if threshold <= 0:
             raise ValueError(f"threshold must be positive, got {threshold}")
@@ -92,9 +110,14 @@ class MinuteDollarBarConstructor(BaseMinuteBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
     @classmethod
@@ -116,6 +139,7 @@ def compute_volume_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -123,6 +147,10 @@ def compute_volume_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pd.DataFrame:
     """Build volume bars from a DataFrame of minute OHLCV candles.
 
@@ -161,9 +189,14 @@ def compute_volume_bars_from_minutes(
         stream_id=stream_id,
         strict_ordering=strict_ordering,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
     return ctor.batch(minutes_df)
 
@@ -174,6 +207,7 @@ def compute_dollar_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -181,6 +215,10 @@ def compute_dollar_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pd.DataFrame:
     """Build dollar (notional) bars from a DataFrame of minute OHLCV candles.
 
@@ -195,9 +233,14 @@ def compute_dollar_bars_from_minutes(
         stream_id=stream_id,
         strict_ordering=strict_ordering,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
     return ctor.batch(minutes_df)
 

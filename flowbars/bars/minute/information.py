@@ -6,7 +6,7 @@ from whole-minute bar statistics.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -35,6 +35,7 @@ class _MinuteEWMABarConstructor(BaseMinuteBarConstructor):
         initial_ewa_t: float,
         initial_ewa_proportion: float,
         warmup_bars: int,
+        warmup_minutes: int | None,
         calendar: TradingCalendar | None,
         schema: MinuteSchemaMapping | None,
         watermark: str | None,
@@ -43,6 +44,10 @@ class _MinuteEWMABarConstructor(BaseMinuteBarConstructor):
         backend: str,
         on_bar: Any,
         on_threshold_update: Any,
+        multiplier: float,
+        volume_type: str,
+        session_policy: Literal["close", "carry", "discard"],
+        session_estimator: Literal["persist", "reset"],
     ) -> None:
         estimator = EWMAThresholdEstimator(
             bar_family=self._bar_family,
@@ -60,9 +65,14 @@ class _MinuteEWMABarConstructor(BaseMinuteBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
 
@@ -78,6 +88,7 @@ class MinuteImbalanceVolumeBarConstructor(_MinuteEWMABarConstructor):
         initial_ewa_t: float = 1.0,
         initial_ewa_proportion: float = 0.5,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
         watermark: str | None = "timestamp",
@@ -86,6 +97,10 @@ class MinuteImbalanceVolumeBarConstructor(_MinuteEWMABarConstructor):
         backend: str = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
+        session_policy: Literal["close", "carry", "discard"] = "close",
+        session_estimator: Literal["persist", "reset"] = "persist",
     ) -> None:
         super().__init__(
             accumulator=MinuteImbalanceAccumulator(bar_type="imbalance_volume", metric="volume"),
@@ -94,6 +109,7 @@ class MinuteImbalanceVolumeBarConstructor(_MinuteEWMABarConstructor):
             initial_ewa_t=initial_ewa_t,
             initial_ewa_proportion=initial_ewa_proportion,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             calendar=calendar,
             schema=schema,
             watermark=watermark,
@@ -102,6 +118,10 @@ class MinuteImbalanceVolumeBarConstructor(_MinuteEWMABarConstructor):
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
     @classmethod
@@ -121,6 +141,7 @@ class MinuteImbalanceDollarBarConstructor(_MinuteEWMABarConstructor):
     """Minute dollar-imbalance bars (``sign × close × volume`` per minute)."""
 
     _bar_family = "imbalance"
+    approximate = True
 
     def __init__(
         self,
@@ -129,6 +150,7 @@ class MinuteImbalanceDollarBarConstructor(_MinuteEWMABarConstructor):
         initial_ewa_t: float = 1.0,
         initial_ewa_proportion: float = 0.5,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
         watermark: str | None = "timestamp",
@@ -137,6 +159,10 @@ class MinuteImbalanceDollarBarConstructor(_MinuteEWMABarConstructor):
         backend: str = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
+        session_policy: Literal["close", "carry", "discard"] = "close",
+        session_estimator: Literal["persist", "reset"] = "persist",
     ) -> None:
         super().__init__(
             accumulator=MinuteImbalanceAccumulator(bar_type="imbalance_dollar", metric="dollar"),
@@ -145,6 +171,7 @@ class MinuteImbalanceDollarBarConstructor(_MinuteEWMABarConstructor):
             initial_ewa_t=initial_ewa_t,
             initial_ewa_proportion=initial_ewa_proportion,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             calendar=calendar,
             schema=schema,
             watermark=watermark,
@@ -153,6 +180,10 @@ class MinuteImbalanceDollarBarConstructor(_MinuteEWMABarConstructor):
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
     @classmethod
@@ -181,6 +212,7 @@ class _MinuteRunBarConstructor(_MinuteEWMABarConstructor):
         initial_ewa_t: float,
         initial_ewa_proportion: float,
         warmup_bars: int,
+        warmup_minutes: int | None,
         min_run_length: int,
         calendar: TradingCalendar | None,
         schema: MinuteSchemaMapping | None,
@@ -190,6 +222,10 @@ class _MinuteRunBarConstructor(_MinuteEWMABarConstructor):
         backend: str,
         on_bar: Any,
         on_threshold_update: Any,
+        multiplier: float,
+        volume_type: str,
+        session_policy: Literal["close", "carry", "discard"],
+        session_estimator: Literal["persist", "reset"],
     ) -> None:
         if min_run_length < 0:
             raise ValueError(f"min_run_length must be non-negative, got {min_run_length}")
@@ -201,6 +237,7 @@ class _MinuteRunBarConstructor(_MinuteEWMABarConstructor):
             initial_ewa_t=initial_ewa_t,
             initial_ewa_proportion=initial_ewa_proportion,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             calendar=calendar,
             schema=schema,
             watermark=watermark,
@@ -209,11 +246,18 @@ class _MinuteRunBarConstructor(_MinuteEWMABarConstructor):
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
     def _should_return(self, bar: Bar) -> bool:
         """Filter bars below ``min_run_length`` minutes."""
         return bar.num_ticks >= self._min_run_length
+
+    def _extra_params(self) -> dict[str, Any]:
+        return {"min_run_length": self._min_run_length}
 
     def _extra_state(self) -> dict[str, Any]:
         state = super()._extra_state()
@@ -235,6 +279,7 @@ class MinuteRunVolumeBarConstructor(_MinuteRunBarConstructor):
         initial_ewa_t: float = 1.0,
         initial_ewa_proportion: float = 0.5,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         min_run_length: int = 0,
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
@@ -244,6 +289,10 @@ class MinuteRunVolumeBarConstructor(_MinuteRunBarConstructor):
         backend: str = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
+        session_policy: Literal["close", "carry", "discard"] = "close",
+        session_estimator: Literal["persist", "reset"] = "persist",
     ) -> None:
         super().__init__(
             accumulator=MinuteRunAccumulator(bar_type="run_volume", metric="volume"),
@@ -252,6 +301,7 @@ class MinuteRunVolumeBarConstructor(_MinuteRunBarConstructor):
             initial_ewa_t=initial_ewa_t,
             initial_ewa_proportion=initial_ewa_proportion,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             min_run_length=min_run_length,
             calendar=calendar,
             schema=schema,
@@ -261,6 +311,10 @@ class MinuteRunVolumeBarConstructor(_MinuteRunBarConstructor):
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
     @classmethod
@@ -279,6 +333,8 @@ class MinuteRunVolumeBarConstructor(_MinuteRunBarConstructor):
 class MinuteRunDollarBarConstructor(_MinuteRunBarConstructor):
     """Minute dollar-run bars."""
 
+    approximate = True
+
     def __init__(
         self,
         span: float = 20.0,
@@ -286,6 +342,7 @@ class MinuteRunDollarBarConstructor(_MinuteRunBarConstructor):
         initial_ewa_t: float = 1.0,
         initial_ewa_proportion: float = 0.5,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         min_run_length: int = 0,
         calendar: TradingCalendar | None = None,
         schema: MinuteSchemaMapping | None = None,
@@ -295,6 +352,10 @@ class MinuteRunDollarBarConstructor(_MinuteRunBarConstructor):
         backend: str = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
+        session_policy: Literal["close", "carry", "discard"] = "close",
+        session_estimator: Literal["persist", "reset"] = "persist",
     ) -> None:
         super().__init__(
             accumulator=MinuteRunAccumulator(bar_type="run_dollar", metric="dollar"),
@@ -303,6 +364,7 @@ class MinuteRunDollarBarConstructor(_MinuteRunBarConstructor):
             initial_ewa_t=initial_ewa_t,
             initial_ewa_proportion=initial_ewa_proportion,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             min_run_length=min_run_length,
             calendar=calendar,
             schema=schema,
@@ -312,6 +374,10 @@ class MinuteRunDollarBarConstructor(_MinuteRunBarConstructor):
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
     @classmethod
@@ -334,6 +400,7 @@ def compute_imbalance_volume_bars_from_minutes(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     schema: MinuteSchemaMapping | None = None,
     *,
     backend: str = "python",
@@ -343,6 +410,10 @@ def compute_imbalance_volume_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pd.DataFrame:
     """Build volume-imbalance bars from minute OHLCV candles."""
     ctor = MinuteImbalanceVolumeBarConstructor(
@@ -351,6 +422,7 @@ def compute_imbalance_volume_bars_from_minutes(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         calendar=calendar,
         schema=schema,
         watermark=watermark,
@@ -359,6 +431,10 @@ def compute_imbalance_volume_bars_from_minutes(
         backend=backend,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
     return ctor.batch(minutes_df)
 
@@ -370,6 +446,7 @@ def compute_imbalance_dollar_bars_from_minutes(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     schema: MinuteSchemaMapping | None = None,
     *,
     backend: str = "python",
@@ -379,6 +456,10 @@ def compute_imbalance_dollar_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pd.DataFrame:
     """Build dollar-imbalance bars from minute OHLCV candles."""
     ctor = MinuteImbalanceDollarBarConstructor(
@@ -387,6 +468,7 @@ def compute_imbalance_dollar_bars_from_minutes(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         calendar=calendar,
         schema=schema,
         watermark=watermark,
@@ -395,6 +477,10 @@ def compute_imbalance_dollar_bars_from_minutes(
         backend=backend,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
     return ctor.batch(minutes_df)
 
@@ -406,6 +492,7 @@ def compute_run_volume_bars_from_minutes(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     min_run_length: int = 0,
     schema: MinuteSchemaMapping | None = None,
     *,
@@ -416,6 +503,10 @@ def compute_run_volume_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pd.DataFrame:
     """Build volume-run bars from minute OHLCV candles.
 
@@ -427,6 +518,7 @@ def compute_run_volume_bars_from_minutes(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         min_run_length=min_run_length,
         calendar=calendar,
         schema=schema,
@@ -436,6 +528,10 @@ def compute_run_volume_bars_from_minutes(
         backend=backend,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
     return ctor.batch(minutes_df)
 
@@ -447,6 +543,7 @@ def compute_run_dollar_bars_from_minutes(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     min_run_length: int = 0,
     schema: MinuteSchemaMapping | None = None,
     *,
@@ -457,6 +554,10 @@ def compute_run_dollar_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pd.DataFrame:
     """Build dollar-run bars from minute OHLCV candles."""
     ctor = MinuteRunDollarBarConstructor(
@@ -465,6 +566,7 @@ def compute_run_dollar_bars_from_minutes(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         min_run_length=min_run_length,
         calendar=calendar,
         schema=schema,
@@ -474,6 +576,10 @@ def compute_run_dollar_bars_from_minutes(
         backend=backend,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
     return ctor.batch(minutes_df)
 

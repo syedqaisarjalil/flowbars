@@ -60,6 +60,7 @@ def _write_bar(
     n_ticks: int,
     open_ts_val: int,
     close_ts_val: int,
+    multiplier: float,
 ) -> None:
     """Write one completed bar into *out* at row *idx* (inline emit)."""
     out[idx, _COL_BAR_ID] = bar_id
@@ -69,7 +70,7 @@ def _write_bar(
     out[idx, _COL_CLOSE] = close_val
     out[idx, _COL_VOLUME] = vol
     out[idx, _COL_DOLLAR_VALUE] = dollar_val
-    out[idx, _COL_VWAP] = dollar_val / vol if vol > 0.0 else 0.0
+    out[idx, _COL_VWAP] = dollar_val / (vol * multiplier) if vol > 0.0 else 0.0
     out[idx, _COL_NUM_TICKS] = n_ticks
     out[idx, _COL_OPEN_TS] = open_ts_val
     out[idx, _COL_CLOSE_TS] = close_ts_val
@@ -85,6 +86,7 @@ def _minute_metric_bars_numba(
     volumes: np.ndarray,
     threshold: float,
     metric_code: int,
+    multiplier: float,
 ) -> np.ndarray:
     """Scalar-rollover kernel: volume, dollar, volatility, relative range."""
     n = len(timestamps)
@@ -128,14 +130,14 @@ def _minute_metric_bars_numba(
 
         close_val = c_i
         vol += vol_i
-        dollar_val += c_i * vol_i
+        dollar_val += c_i * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
         if metric_code == _METRIC_VOLUME:
             metric = vol_i
         elif metric_code == _METRIC_DOLLAR:
-            metric = c_i * vol_i
+            metric = c_i * vol_i * multiplier
         elif metric_code == _METRIC_VOLATILITY:
             if np.isnan(prev_close) or prev_close == 0.0:
                 metric = 0.0
@@ -163,6 +165,7 @@ def _minute_metric_bars_numba(
                 n_ticks,
                 open_ts_val,
                 close_ts_val,
+                multiplier,
             )
             bar_count += 1
             bar_id += 1
@@ -193,6 +196,7 @@ def _minute_renko_bars_numba(
     closes: np.ndarray,
     volumes: np.ndarray,
     threshold: float,
+    multiplier: float,
 ) -> np.ndarray:
     """Renko-displacement kernel.  Displacement is not additive: no overflow."""
     n = len(timestamps)
@@ -236,7 +240,7 @@ def _minute_renko_bars_numba(
 
         close_val = c_i
         vol += vol_i
-        dollar_val += c_i * vol_i
+        dollar_val += c_i * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
@@ -261,6 +265,7 @@ def _minute_renko_bars_numba(
                 n_ticks,
                 open_ts_val,
                 close_ts_val,
+                multiplier,
             )
             bar_count += 1
             bar_id += 1
@@ -292,6 +297,7 @@ def _minute_hybrid_bars_numba(
     volumes: np.ndarray,
     dollar_threshold: float,
     volatility_threshold: float,
+    multiplier: float,
 ) -> np.ndarray:
     """Hybrid kernel: close when both dollar and volatility targets are met."""
     n = len(timestamps)
@@ -336,11 +342,11 @@ def _minute_hybrid_bars_numba(
 
         close_val = c_i
         vol += vol_i
-        dollar_val += c_i * vol_i
+        dollar_val += c_i * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
-        cum_dollar += c_i * vol_i
+        cum_dollar += c_i * vol_i * multiplier
         if np.isnan(prev_close) or prev_close == 0.0:
             metric = 0.0
         else:
@@ -362,6 +368,7 @@ def _minute_hybrid_bars_numba(
                 n_ticks,
                 open_ts_val,
                 close_ts_val,
+                multiplier,
             )
             bar_count += 1
             bar_id += 1
@@ -396,6 +403,7 @@ def _minute_imbalance_bars_numba(
     sides: np.ndarray,
     threshold: float,
     metric_code: int,
+    multiplier: float,
 ) -> np.ndarray:
     """Minute imbalance kernel (static threshold)."""
     n = len(timestamps)
@@ -438,7 +446,7 @@ def _minute_imbalance_bars_numba(
 
         close_val = c_i
         vol += vol_i
-        dollar_val += c_i * vol_i
+        dollar_val += c_i * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
@@ -446,7 +454,7 @@ def _minute_imbalance_bars_numba(
             if metric_code == _METRIC_VOLUME:
                 metric = vol_i
             else:  # dollar
-                metric = c_i * vol_i
+                metric = c_i * vol_i * multiplier
             signed_imbalance += side * metric
 
         if abs(signed_imbalance) >= threshold:
@@ -463,6 +471,7 @@ def _minute_imbalance_bars_numba(
                 n_ticks,
                 open_ts_val,
                 close_ts_val,
+                multiplier,
             )
             bar_count += 1
             bar_id += 1
@@ -499,6 +508,7 @@ def _minute_run_bars_numba(
     sides: np.ndarray,
     threshold: float,
     metric_code: int,
+    multiplier: float,
 ) -> np.ndarray:
     """Minute run kernel (static threshold)."""
     n = len(timestamps)
@@ -545,14 +555,14 @@ def _minute_run_bars_numba(
 
         close_val = c_i
         vol += vol_i
-        dollar_val += c_i * vol_i
+        dollar_val += c_i * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
         if metric_code == _METRIC_VOLUME:
             metric = vol_i
         else:  # dollar
-            metric = c_i * vol_i
+            metric = c_i * vol_i * multiplier
 
         if first_minute:
             first_minute = False
@@ -582,6 +592,7 @@ def _minute_run_bars_numba(
                 n_ticks,
                 open_ts_val,
                 close_ts_val,
+                multiplier,
             )
             bar_count += 1
             bar_id += 1
@@ -621,6 +632,7 @@ def _minute_imbalance_bars_ewma_numba(
     alpha: float,
     initial_ewa_t: float,
     initial_ewa_proportion: float,
+    multiplier: float,
 ) -> np.ndarray:
     """Minute imbalance kernel with in-loop two-component EWMA updates."""
     n = len(timestamps)
@@ -669,7 +681,7 @@ def _minute_imbalance_bars_ewma_numba(
 
         close_val = c_i
         vol += vol_i
-        dollar_val += c_i * vol_i
+        dollar_val += c_i * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
@@ -677,7 +689,7 @@ def _minute_imbalance_bars_ewma_numba(
             if metric_code == _METRIC_VOLUME:
                 metric = vol_i
             else:
-                metric = c_i * vol_i
+                metric = c_i * vol_i * multiplier
             signed_imbalance += side * metric
 
         if abs(signed_imbalance) >= threshold_val:
@@ -694,6 +706,7 @@ def _minute_imbalance_bars_ewma_numba(
                 n_ticks,
                 open_ts_val,
                 close_ts_val,
+                multiplier,
             )
             bar_count += 1
             bar_id += 1
@@ -747,6 +760,7 @@ def _minute_run_bars_ewma_numba(
     alpha: float,
     initial_ewa_t: float,
     initial_ewa_proportion: float,
+    multiplier: float,
 ) -> np.ndarray:
     """Minute run kernel with in-loop two-component EWMA updates."""
     n = len(timestamps)
@@ -804,14 +818,14 @@ def _minute_run_bars_ewma_numba(
 
         close_val = c_i
         vol += vol_i
-        dollar_val += c_i * vol_i
+        dollar_val += c_i * vol_i * multiplier
         n_ticks += 1
         close_ts_val = ts
 
         if metric_code == _METRIC_VOLUME:
             metric = vol_i
         else:
-            metric = c_i * vol_i
+            metric = c_i * vol_i * multiplier
 
         if first_minute:
             first_minute = False
@@ -845,6 +859,7 @@ def _minute_run_bars_ewma_numba(
                 n_ticks,
                 open_ts_val,
                 close_ts_val,
+                multiplier,
             )
             bar_count += 1
             bar_id += 1
@@ -914,7 +929,8 @@ def numba_batch_minute(
     config : dict
         ``threshold`` for static bars, or ``alpha`` / ``initial_ewa_t`` /
         ``initial_ewa_proportion`` for EWMA bars.  Hybrid also reads
-        ``volatility_threshold``.
+        ``volatility_threshold``.  ``multiplier`` (default 1.0) scales the
+        notional metric; ``vwap`` stays a price.
 
     Returns
     -------
@@ -928,13 +944,24 @@ def numba_batch_minute(
     low = lows.astype(np.float64)
     c = closes.astype(np.float64)
     v = volumes.astype(np.float64)
+    multiplier = float(config.get("multiplier", 1.0))
 
     if bar_type in ("volume", "dollar", "volatility", "range"):
         bar_data = _minute_metric_bars_numba(
-            ts, o, h, low, c, v, float(config["threshold"]), _METRIC_CODES[bar_type]
+            ts,
+            o,
+            h,
+            low,
+            c,
+            v,
+            float(config["threshold"]),
+            _METRIC_CODES[bar_type],
+            multiplier,
         )
     elif bar_type == "renko":
-        bar_data = _minute_renko_bars_numba(ts, o, h, low, c, v, float(config["threshold"]))
+        bar_data = _minute_renko_bars_numba(
+            ts, o, h, low, c, v, float(config["threshold"]), multiplier
+        )
     elif bar_type == "hybrid":
         bar_data = _minute_hybrid_bars_numba(
             ts,
@@ -945,6 +972,7 @@ def numba_batch_minute(
             v,
             float(config["threshold"]),
             float(config["volatility_threshold"]),
+            multiplier,
         )
     elif bar_type in ("imbalance_volume", "imbalance_dollar"):
         code = _METRIC_CODES[bar_type]
@@ -961,10 +989,20 @@ def numba_batch_minute(
                 float(config["alpha"]),
                 float(config["initial_ewa_t"]),
                 float(config["initial_ewa_proportion"]),
+                multiplier,
             )
         else:
             bar_data = _minute_imbalance_bars_numba(
-                ts, o, h, low, c, v, sides.astype(np.float64), float(config["threshold"]), code
+                ts,
+                o,
+                h,
+                low,
+                c,
+                v,
+                sides.astype(np.float64),
+                float(config["threshold"]),
+                code,
+                multiplier,
             )
     elif bar_type in ("run_volume", "run_dollar"):
         code = _METRIC_CODES[bar_type]
@@ -981,10 +1019,20 @@ def numba_batch_minute(
                 float(config["alpha"]),
                 float(config["initial_ewa_t"]),
                 float(config["initial_ewa_proportion"]),
+                multiplier,
             )
         else:
             bar_data = _minute_run_bars_numba(
-                ts, o, h, low, c, v, sides.astype(np.float64), float(config["threshold"]), code
+                ts,
+                o,
+                h,
+                low,
+                c,
+                v,
+                sides.astype(np.float64),
+                float(config["threshold"]),
+                code,
+                multiplier,
             )
     else:
         raise KeyError(f"No minute numba backend for bar type {bar_type!r}")

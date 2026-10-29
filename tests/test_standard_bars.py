@@ -65,6 +65,7 @@ def bars_to_df(bars: list[Bar]) -> pd.DataFrame:
                 "open_ts",
                 "close_ts",
                 "bar_type",
+                "partial",
             ]
         )
     return pd.DataFrame(
@@ -82,6 +83,7 @@ def bars_to_df(bars: list[Bar]) -> pd.DataFrame:
                 "open_ts": b.open_ts,
                 "close_ts": b.close_ts,
                 "bar_type": b.bar_type,
+                "partial": b.partial,
             }
             for b in bars
         ]

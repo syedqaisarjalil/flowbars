@@ -4,9 +4,8 @@ Standard bars: time, tick, volume, dollar.
 Information-driven bars: imbalance, run (tick, volume, dollar variants).
 """
 
-__version__ = "0.1.0"
-
 # Public API — batch convenience functions (populated as bar types are registered)
+from flowbars._version import __version__  # noqa: F401
 from flowbars.bars.constructor import BaseBarConstructor
 from flowbars.bars.information import (  # noqa: F401 — triggers @register_bar side-effects
     ImbalanceDollarBarConstructor,
@@ -54,7 +53,9 @@ from flowbars.bars.minute import (  # noqa: F401 — triggers minute registratio
     compute_volatility_bars_from_minutes,
     compute_volume_bars_from_minutes,
 )
+from flowbars.bars.output import validate_bar_frame
 from flowbars.bars.registry import BarRegistry
+from flowbars.bars.spec import BarTypeSpec
 from flowbars.bars.standard import (  # noqa: F401 — triggers @register_bar side-effects
     DollarBarConstructor,
     TickBarConstructor,
@@ -72,6 +73,7 @@ from flowbars.calendars import (
     TradingCalendar,
     WeekdayCalendar,
 )
+from flowbars.core import BarContractError
 
 # Re-export the bar quality report
 from flowbars.quality import bar_quality_report
@@ -88,7 +90,9 @@ from flowbars.thresholds import (
 )
 
 __all__ = [
+    "BarContractError",
     "BarRegistry",
+    "BarTypeSpec",
     "BaseBarConstructor",
     "BaseMinuteBarConstructor",
     "ContinuousCalendar",
@@ -134,6 +138,7 @@ __all__ = [
     "WeekdayCalendar",
     "bar_quality_report",
     "load_sample_data",
+    "validate_bar_frame",
     "compute_dollar_bars",
     "compute_dollar_bars_from_minutes",
     "compute_hybrid_bars_from_minutes",

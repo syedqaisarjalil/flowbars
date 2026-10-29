@@ -13,7 +13,7 @@ Batch-only — no streaming equivalent for polars.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import polars as pl  # type: ignore
 
@@ -120,6 +120,10 @@ def compute_tick_bars(
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
 ) -> pl.DataFrame:
     """Build tick bars from a Polars DataFrame of ticks.
 
@@ -146,6 +150,10 @@ def compute_tick_bars(
         calendar=calendar,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
     )
     return pl.from_pandas(pd_bars)
 
@@ -157,6 +165,10 @@ def compute_volume_bars(
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
 ) -> pl.DataFrame:
     """Build volume bars from a Polars DataFrame of ticks.
 
@@ -182,6 +194,10 @@ def compute_volume_bars(
         calendar=calendar,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
     )
     return pl.from_pandas(pd_bars)
 
@@ -193,6 +209,10 @@ def compute_dollar_bars(
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
 ) -> pl.DataFrame:
     """Build dollar bars from a Polars DataFrame of ticks.
 
@@ -218,6 +238,10 @@ def compute_dollar_bars(
         calendar=calendar,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
     )
     return pl.from_pandas(pd_bars)
 
@@ -230,6 +254,10 @@ def compute_time_bars(
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
 ) -> pl.DataFrame:
     """Build time bars from a Polars DataFrame of ticks.
 
@@ -258,6 +286,10 @@ def compute_time_bars(
         calendar=calendar,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
     )
     return pl.from_pandas(pd_bars)
 
@@ -274,10 +306,13 @@ def compute_imbalance_tick_bars(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     schema: SchemaMapping | None = None,
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
 ) -> pl.DataFrame:
     """Build tick-imbalance bars from a Polars DataFrame of ticks.
 
@@ -311,10 +346,13 @@ def compute_imbalance_tick_bars(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         schema=schema,
         calendar=calendar,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        multiplier=multiplier,
+        volume_type=volume_type,
     )
     return pl.from_pandas(pd_bars)
 
@@ -326,10 +364,13 @@ def compute_imbalance_volume_bars(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     schema: SchemaMapping | None = None,
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
 ) -> pl.DataFrame:
     """Build volume-imbalance bars from a Polars DataFrame of ticks.
 
@@ -363,10 +404,13 @@ def compute_imbalance_volume_bars(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         schema=schema,
         calendar=calendar,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        multiplier=multiplier,
+        volume_type=volume_type,
     )
     return pl.from_pandas(pd_bars)
 
@@ -378,10 +422,13 @@ def compute_imbalance_dollar_bars(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     schema: SchemaMapping | None = None,
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
 ) -> pl.DataFrame:
     """Build dollar-imbalance bars from a Polars DataFrame of ticks.
 
@@ -415,10 +462,13 @@ def compute_imbalance_dollar_bars(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         schema=schema,
         calendar=calendar,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        multiplier=multiplier,
+        volume_type=volume_type,
     )
     return pl.from_pandas(pd_bars)
 
@@ -435,11 +485,14 @@ def compute_run_tick_bars(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     min_run_length: int = 0,
     schema: SchemaMapping | None = None,
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
 ) -> pl.DataFrame:
     """Build tick-run bars from a Polars DataFrame of ticks.
 
@@ -475,11 +528,14 @@ def compute_run_tick_bars(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         min_run_length=min_run_length,
         schema=schema,
         calendar=calendar,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        multiplier=multiplier,
+        volume_type=volume_type,
     )
     return pl.from_pandas(pd_bars)
 
@@ -491,11 +547,14 @@ def compute_run_volume_bars(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     min_run_length: int = 0,
     schema: SchemaMapping | None = None,
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
 ) -> pl.DataFrame:
     """Build volume-run bars from a Polars DataFrame of ticks.
 
@@ -531,11 +590,14 @@ def compute_run_volume_bars(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         min_run_length=min_run_length,
         schema=schema,
         calendar=calendar,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        multiplier=multiplier,
+        volume_type=volume_type,
     )
     return pl.from_pandas(pd_bars)
 
@@ -547,11 +609,14 @@ def compute_run_dollar_bars(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     min_run_length: int = 0,
     schema: SchemaMapping | None = None,
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
 ) -> pl.DataFrame:
     """Build dollar-run bars from a Polars DataFrame of ticks.
 
@@ -587,11 +652,14 @@ def compute_run_dollar_bars(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         min_run_length=min_run_length,
         schema=schema,
         calendar=calendar,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        multiplier=multiplier,
+        volume_type=volume_type,
     )
     return pl.from_pandas(pd_bars)
 
@@ -613,6 +681,7 @@ def compute_volume_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -620,6 +689,10 @@ def compute_volume_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pl.DataFrame:
     """Build volume bars from a Polars DataFrame of minute OHLCV candles."""
     return _minute_call(
@@ -628,6 +701,7 @@ def compute_volume_bars_from_minutes(
         threshold,
         schema,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         watermark=watermark,
         strict_ordering=strict_ordering,
@@ -635,6 +709,10 @@ def compute_volume_bars_from_minutes(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
 
 
@@ -644,6 +722,7 @@ def compute_dollar_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -651,6 +730,10 @@ def compute_dollar_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pl.DataFrame:
     """Build dollar bars from a Polars DataFrame of minute OHLCV candles."""
     return _minute_call(
@@ -659,6 +742,7 @@ def compute_dollar_bars_from_minutes(
         threshold,
         schema,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         watermark=watermark,
         strict_ordering=strict_ordering,
@@ -666,6 +750,10 @@ def compute_dollar_bars_from_minutes(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
 
 
@@ -676,6 +764,7 @@ def compute_imbalance_volume_bars_from_minutes(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     schema: MinuteSchemaMapping | None = None,
     *,
     backend: str = "python",
@@ -685,6 +774,10 @@ def compute_imbalance_volume_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pl.DataFrame:
     """Build volume-imbalance bars from a Polars DataFrame of minute candles."""
     return _minute_call(
@@ -695,6 +788,7 @@ def compute_imbalance_volume_bars_from_minutes(
         initial_ewa_t,
         initial_ewa_proportion,
         warmup_bars,
+        warmup_minutes,
         schema,
         backend=backend,
         watermark=watermark,
@@ -703,6 +797,10 @@ def compute_imbalance_volume_bars_from_minutes(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
 
 
@@ -713,6 +811,7 @@ def compute_imbalance_dollar_bars_from_minutes(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     schema: MinuteSchemaMapping | None = None,
     *,
     backend: str = "python",
@@ -722,6 +821,10 @@ def compute_imbalance_dollar_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pl.DataFrame:
     """Build dollar-imbalance bars from a Polars DataFrame of minute candles."""
     return _minute_call(
@@ -732,6 +835,7 @@ def compute_imbalance_dollar_bars_from_minutes(
         initial_ewa_t,
         initial_ewa_proportion,
         warmup_bars,
+        warmup_minutes,
         schema,
         backend=backend,
         watermark=watermark,
@@ -740,6 +844,10 @@ def compute_imbalance_dollar_bars_from_minutes(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
 
 
@@ -750,6 +858,7 @@ def compute_run_volume_bars_from_minutes(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     min_run_length: int = 0,
     schema: MinuteSchemaMapping | None = None,
     *,
@@ -760,6 +869,10 @@ def compute_run_volume_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pl.DataFrame:
     """Build volume-run bars from a Polars DataFrame of minute candles."""
     return _minute_call(
@@ -770,6 +883,7 @@ def compute_run_volume_bars_from_minutes(
         initial_ewa_t,
         initial_ewa_proportion,
         warmup_bars,
+        warmup_minutes,
         min_run_length,
         schema,
         backend=backend,
@@ -779,6 +893,10 @@ def compute_run_volume_bars_from_minutes(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
 
 
@@ -789,6 +907,7 @@ def compute_run_dollar_bars_from_minutes(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     min_run_length: int = 0,
     schema: MinuteSchemaMapping | None = None,
     *,
@@ -799,6 +918,10 @@ def compute_run_dollar_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pl.DataFrame:
     """Build dollar-run bars from a Polars DataFrame of minute candles."""
     return _minute_call(
@@ -809,6 +932,7 @@ def compute_run_dollar_bars_from_minutes(
         initial_ewa_t,
         initial_ewa_proportion,
         warmup_bars,
+        warmup_minutes,
         min_run_length,
         schema,
         backend=backend,
@@ -818,6 +942,10 @@ def compute_run_dollar_bars_from_minutes(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
 
 
@@ -827,6 +955,7 @@ def compute_volatility_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -834,6 +963,10 @@ def compute_volatility_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pl.DataFrame:
     """Build volatility bars from a Polars DataFrame of minute candles."""
     return _minute_call(
@@ -842,6 +975,7 @@ def compute_volatility_bars_from_minutes(
         threshold,
         schema,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         watermark=watermark,
         strict_ordering=strict_ordering,
@@ -849,6 +983,10 @@ def compute_volatility_bars_from_minutes(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
 
 
@@ -858,6 +996,7 @@ def compute_range_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -865,6 +1004,10 @@ def compute_range_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pl.DataFrame:
     """Build relative-range bars from a Polars DataFrame of minute candles."""
     return _minute_call(
@@ -873,6 +1016,7 @@ def compute_range_bars_from_minutes(
         threshold,
         schema,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         watermark=watermark,
         strict_ordering=strict_ordering,
@@ -880,6 +1024,10 @@ def compute_range_bars_from_minutes(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
 
 
@@ -889,6 +1037,7 @@ def compute_renko_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -896,6 +1045,10 @@ def compute_renko_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pl.DataFrame:
     """Build renko-displacement bars from a Polars DataFrame of minute candles."""
     return _minute_call(
@@ -904,6 +1057,7 @@ def compute_renko_bars_from_minutes(
         threshold,
         schema,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         watermark=watermark,
         strict_ordering=strict_ordering,
@@ -911,6 +1065,10 @@ def compute_renko_bars_from_minutes(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
 
 
@@ -921,6 +1079,7 @@ def compute_hybrid_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -928,6 +1087,10 @@ def compute_hybrid_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pl.DataFrame:
     """Build hybrid bars from a Polars DataFrame of minute candles."""
     return _minute_call(
@@ -937,6 +1100,7 @@ def compute_hybrid_bars_from_minutes(
         volatility_threshold,
         schema,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         watermark=watermark,
         strict_ordering=strict_ordering,
@@ -944,4 +1108,8 @@ def compute_hybrid_bars_from_minutes(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )

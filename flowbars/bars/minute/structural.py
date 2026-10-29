@@ -6,7 +6,7 @@ These bar types exist only on the minute path.  They use static thresholds
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -35,9 +35,14 @@ class MinuteVolatilityBarConstructor(BaseMinuteBarConstructor):
         stream_id: str = "default",
         strict_ordering: bool = False,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         backend: str = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
+        session_policy: Literal["close", "carry", "discard"] = "close",
+        session_estimator: Literal["persist", "reset"] = "persist",
     ) -> None:
         if threshold < 0:
             raise ValueError(f"threshold must be non-negative, got {threshold}")
@@ -50,9 +55,14 @@ class MinuteVolatilityBarConstructor(BaseMinuteBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
     @classmethod
@@ -79,9 +89,14 @@ class MinuteRangeBarConstructor(BaseMinuteBarConstructor):
         stream_id: str = "default",
         strict_ordering: bool = False,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         backend: str = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
+        session_policy: Literal["close", "carry", "discard"] = "close",
+        session_estimator: Literal["persist", "reset"] = "persist",
     ) -> None:
         if threshold < 0:
             raise ValueError(f"threshold must be non-negative, got {threshold}")
@@ -94,9 +109,14 @@ class MinuteRangeBarConstructor(BaseMinuteBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
     @classmethod
@@ -123,9 +143,14 @@ class MinuteRenkoBarConstructor(BaseMinuteBarConstructor):
         stream_id: str = "default",
         strict_ordering: bool = False,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         backend: str = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
+        session_policy: Literal["close", "carry", "discard"] = "close",
+        session_estimator: Literal["persist", "reset"] = "persist",
     ) -> None:
         if threshold < 0:
             raise ValueError(f"threshold must be non-negative, got {threshold}")
@@ -138,9 +163,14 @@ class MinuteRenkoBarConstructor(BaseMinuteBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
     @classmethod
@@ -162,6 +192,8 @@ class MinuteHybridBarConstructor(BaseMinuteBarConstructor):
     both targets are held on the accumulator and persisted in its state.
     """
 
+    approximate = True
+
     def __init__(
         self,
         dollar_threshold: float,
@@ -172,9 +204,14 @@ class MinuteHybridBarConstructor(BaseMinuteBarConstructor):
         stream_id: str = "default",
         strict_ordering: bool = False,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         backend: str = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
+        session_policy: Literal["close", "carry", "discard"] = "close",
+        session_estimator: Literal["persist", "reset"] = "persist",
     ) -> None:
         if dollar_threshold < 0:
             raise ValueError(f"dollar_threshold must be non-negative, got {dollar_threshold}")
@@ -195,9 +232,14 @@ class MinuteHybridBarConstructor(BaseMinuteBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
 
     @classmethod
@@ -223,6 +265,7 @@ def compute_volatility_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -230,6 +273,10 @@ def compute_volatility_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pd.DataFrame:
     """Build volatility bars from minute OHLCV candles.
 
@@ -244,9 +291,14 @@ def compute_volatility_bars_from_minutes(
         stream_id=stream_id,
         strict_ordering=strict_ordering,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
     return ctor.batch(minutes_df)
 
@@ -257,6 +309,7 @@ def compute_range_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -264,6 +317,10 @@ def compute_range_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pd.DataFrame:
     """Build relative-range bars from minute OHLCV candles.
 
@@ -277,9 +334,14 @@ def compute_range_bars_from_minutes(
         stream_id=stream_id,
         strict_ordering=strict_ordering,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
     return ctor.batch(minutes_df)
 
@@ -290,6 +352,7 @@ def compute_renko_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -297,6 +360,10 @@ def compute_renko_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pd.DataFrame:
     """Build renko-displacement bars from minute OHLCV candles.
 
@@ -311,9 +378,14 @@ def compute_renko_bars_from_minutes(
         stream_id=stream_id,
         strict_ordering=strict_ordering,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
     return ctor.batch(minutes_df)
 
@@ -325,6 +397,7 @@ def compute_hybrid_bars_from_minutes(
     schema: MinuteSchemaMapping | None = None,
     *,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     backend: str = "python",
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -332,6 +405,10 @@ def compute_hybrid_bars_from_minutes(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
+    session_policy: Literal["close", "carry", "discard"] = "close",
+    session_estimator: Literal["persist", "reset"] = "persist",
 ) -> pd.DataFrame:
     """Build hybrid bars from minute OHLCV candles.
 
@@ -347,9 +424,14 @@ def compute_hybrid_bars_from_minutes(
         stream_id=stream_id,
         strict_ordering=strict_ordering,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         backend=backend,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
+        session_policy=session_policy,
+        session_estimator=session_estimator,
     )
     return ctor.batch(minutes_df)
 

@@ -39,6 +39,7 @@ BAR_COLUMNS = [
     "open_ts",
     "close_ts",
     "bar_type",
+    "partial",
 ]
 
 MINUTE_SCHEMA = MinuteSchemaMapping(

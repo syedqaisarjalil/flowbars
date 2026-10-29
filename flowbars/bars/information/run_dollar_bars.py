@@ -64,6 +64,7 @@ class RunDollarBarConstructor(BaseBarConstructor):
         initial_ewa_t: float = 1.0,
         initial_ewa_proportion: float = 0.5,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         min_run_length: int = 0,
         calendar: TradingCalendar | None = None,
         schema: SchemaMapping | None = None,
@@ -73,6 +74,8 @@ class RunDollarBarConstructor(BaseBarConstructor):
         backend: Literal["python", "numba"] = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
     ) -> None:
         if min_run_length < 0:
             raise ValueError(f"min_run_length must be non-negative, got {min_run_length}")
@@ -96,14 +99,20 @@ class RunDollarBarConstructor(BaseBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
         )
 
     def _should_return(self, bar: Bar) -> bool:
         """Filter bars below ``min_run_length`` ticks."""
         return bar.num_ticks >= self._min_run_length
+
+    def _extra_params(self) -> dict[str, Any]:
+        return {"min_run_length": self._min_run_length}
 
     def _extra_state(self) -> dict[str, Any]:
         return {"min_run_length": self._min_run_length}
@@ -136,6 +145,7 @@ def compute_run_dollar_bars(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     min_run_length: int = 0,
     schema: SchemaMapping | None = None,
     watermark: str | None = "timestamp",
@@ -146,6 +156,8 @@ def compute_run_dollar_bars(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
 ) -> pd.DataFrame:
     """Build dollar-run bars from a DataFrame of ticks.
 
@@ -190,6 +202,7 @@ def compute_run_dollar_bars(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         min_run_length=min_run_length,
         calendar=calendar,
         schema=schema,
@@ -199,6 +212,8 @@ def compute_run_dollar_bars(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
     )
     return ctor.batch(ticks_df)
 

@@ -2,7 +2,30 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+
+# What the ``volume`` column means.  Metadata only — it never changes the
+# arithmetic, only how downstream consumers interpret the column.
+VOLUME_TYPES: tuple[str, ...] = ("base", "quote", "shares", "contracts", "tick")
+
+
+def validate_volume_semantics(multiplier: float, volume_type: str) -> tuple[float, str]:
+    """Validate and normalize a contract multiplier and volume-unit label.
+
+    ``multiplier`` converts traded units to notional value
+    (``dollar_value = Σ price × volume × multiplier``); it must be a
+    positive finite number.  ``volume_type`` labels what the ``volume``
+    column means (``base``, ``quote``, ``shares``, ``contracts``, or
+    ``tick``).
+    """
+    if isinstance(multiplier, bool) or not isinstance(multiplier, (int, float)):
+        raise ValueError(f"multiplier must be a number, got {multiplier!r}")
+    if not math.isfinite(multiplier) or multiplier <= 0.0:
+        raise ValueError(f"multiplier must be positive and finite, got {multiplier}")
+    if volume_type not in VOLUME_TYPES:
+        raise ValueError(f"volume_type must be one of {VOLUME_TYPES}, got {volume_type!r}")
+    return float(multiplier), volume_type
 
 
 @dataclass
@@ -59,6 +82,7 @@ class Bar:
     open_ts: int
     close_ts: int
     bar_type: str
+    partial: bool = False  # True for bars force-closed at a session end
 
 
 class FlowbarsError(Exception):
@@ -79,3 +103,7 @@ class StateValidationError(FlowbarsError):
 
 class TickDataError(FlowbarsError):
     """A tick contains invalid data (NaN, Inf, negative price/volume, etc.)."""
+
+
+class BarContractError(FlowbarsError):
+    """A bar frame violates the public output contract."""

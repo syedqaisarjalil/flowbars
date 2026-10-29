@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 import numpy as np
 import pandas as pd
@@ -54,6 +54,10 @@ class BaseMinuteBarConstructor(BaseBarConstructor):
 
     input_kind: ClassVar[str] = "minute"
 
+    # Session-end behavior for the in-progress bar.  Minute bars opt in to
+    # the full policy set; tick bars support force-close only.
+    session_policies: ClassVar[tuple[str, ...]] = ("close", "discard", "carry")
+
     def __init__(
         self,
         accumulator: Any,
@@ -64,9 +68,14 @@ class BaseMinuteBarConstructor(BaseBarConstructor):
         stream_id: str = "default",
         strict_ordering: bool = False,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         backend: Any = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
+        session_policy: Literal["close", "carry", "discard"] = "close",
+        session_estimator: Literal["persist", "reset"] = "persist",
     ) -> None:
         super().__init__(
             accumulator=accumulator,
@@ -77,9 +86,14 @@ class BaseMinuteBarConstructor(BaseBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
+            session_policy=session_policy,
+            session_estimator=session_estimator,
         )
         # Previous minute close/derived sign for the streaming tick rule.
         self._prev_close: float | None = None
@@ -159,7 +173,7 @@ class BaseMinuteBarConstructor(BaseBarConstructor):
 
     def _numba_config(self) -> dict[str, float]:
         estimator = self._threshold_estimator
-        config: dict[str, float] = {}
+        config: dict[str, float] = {"multiplier": self.multiplier}
         if isinstance(estimator, EWMAThresholdEstimator):
             config["alpha"] = estimator.alpha
             config["initial_ewa_t"] = estimator.ewa_t

@@ -61,6 +61,60 @@ ctor2 = TickBarConstructor.from_state(state, schema=schema)
 ctor2.update(tick_already_processed)  # -> None (deduplicated)
 ```
 
+State is versioned (`schema_version`/`engine_version`) and carries the full
+params plus a SHA-256 params hash, so resuming with a mismatched threshold,
+multiplier, volume type, or session policy raises `StateValidationError`
+instead of silently changing bar semantics.  Tick and minute state can never
+be cross-loaded (`input_kind` is validated).  `update_many(df)` streams a whole
+DataFrame through the same `update()` path.
+
+### Warm-up contract
+
+```python
+ctor = TickBarConstructor(
+    threshold=100,
+    schema=schema,
+    warmup_minutes=30,  # discard bars closing in the first 30 minutes
+)
+# or warmup_bars=N — the two are mutually exclusive
+...
+assert ctor.warmup_done  # True once the warm-up window has elapsed
+```
+
+Warm-up bars keep their original `bar_id`, still fire `on_bar`, and still feed
+the adaptive estimator; only their return is suppressed.
+
+### Session policies
+
+On each session-boundary transition (weekends, holidays, early closes, DST —
+whatever the calendar reports) the in-progress bar is handled per
+`session_policy`:
+
+| Policy | Behavior |
+|---|---|
+| `"close"` (default) | Force-close as a `partial` bar; no bar spans two sessions |
+| `"discard"` | Drop the in-progress bar silently (no callback, no overflow carried) |
+| `"carry"` | Keep the bar open across the boundary (opt-in); the gap adds no return |
+
+`session_estimator="persist"` (default) keeps EWMA learning across sessions;
+`"reset"` restores the seeds at each boundary.  Policies are per constructor,
+so different series can choose independently.
+
+### Discover bar types
+
+```python
+from flowbars.bars.registry import BarRegistry
+
+BarRegistry.list()  # ['dollar', 'imbalance_tick', ...]
+spec = BarRegistry.get_spec("volume")
+spec.params_schema  # JSON Schema for constructor params
+spec.output_columns  # the exact output contract
+spec.session_policies  # ('close',)
+spec.state_schema_version  # 2
+```
+
+`MinuteBarRegistry` mirrors this for the `minute_*` types.
+
 ### Dual backend
 
 | Backend | Dependency | Speed vs. pure-Python |
@@ -193,19 +247,22 @@ from flowbars import (
 )
 ```
 
-Every tick constructor and `compute_*_bars` function accepts `warmup_bars`,
-`backend`, `stream_id`, and the `on_bar` / `on_threshold_update` callbacks,
-matching the minute path's signature surface.
+Every tick constructor and `compute_*_bars` function accepts `warmup_bars` /
+`warmup_minutes`, `backend`, `stream_id`, `multiplier`, `volume_type`,
+`session_policy`, `session_estimator`, and the `on_bar` /
+`on_threshold_update` callbacks, matching the minute path's signature surface.
 
 ## Minute-OHLCV path
 
 Non-time bars can also be built from **minute OHLCV candles** instead of raw
 ticks.  The minute path has full mode parity with the tick path — streaming
-`update()`, state save/resume, callbacks, `warmup_bars`, watermark dedup,
-`strict_ordering`, calendars, the numba batch backend, and the polars adapter —
-and produces the identical 12-column output schema.  `num_ticks` counts
-**minutes**, and `dollar_value` / `vwap` use `close × volume` as the notional
-proxy.
+`update()`/`update_many()`, versioned state save/resume, callbacks,
+`warmup_bars`/`warmup_minutes`, watermark dedup, `strict_ordering`, calendars
+with the same session policies, the numba batch backend, and the polars
+adapter — and produces the identical 13-column output schema.  `num_ticks`
+counts **minutes**, and `dollar_value` / `vwap` use `close × volume` as the
+notional proxy (so dollar-family minute bars are flagged
+`approximate=True` in the registry spec and frame metadata).
 
 | Minute type | Closes when… | Function |
 |---|---|---|
@@ -425,16 +482,32 @@ the free, drop-in proxy.
 | `load_sample_data()` | DataFrame | Bundled 500-tick sample |
 | `bar_quality_report(bars)` | dict | Statistical diagnostics |
 
-All `compute_*_bars` functions also accept keyword-only `warmup_bars`,
-`backend`, `stream_id`, `on_bar`, and `on_threshold_update`.
+All `compute_*_bars` functions also accept keyword-only `warmup_bars` /
+`warmup_minutes`, `backend`, `stream_id`, `multiplier`, `volume_type`,
+`session_policy`, `session_estimator`, `on_bar`, and `on_threshold_update`.
+The minute equivalents are `compute_*_bars_from_minutes`
+(`compute_volume_bars_from_minutes`, …, `compute_hybrid_bars_from_minutes`)
+with the same keyword surface.
+
+### Output contract
+
+Every bar — tick or minute — has the same 13 columns: `bar_id`, `open`,
+`high`, `low`, `close`, `volume`, `dollar_value`, `vwap`, `num_ticks`,
+`open_ts`, `close_ts`, `bar_type`, `partial`.  `partial` is `True` only for
+session-boundary force-closes.  Returned DataFrames carry series metadata in
+`DataFrame.attrs` (bar type, params hash, input kind, engine/state version,
+multiplier, volume type, `approximate`).  `multiplier` scales `dollar_value`
+(and the dollar/imbalance/run metrics) while `vwap` stays a price; `volume_type`
+(`base`/`quote`/`shares`/`contracts`/`tick`) is metadata.
 
 ### Core classes
 
 | Class | Purpose |
 |---|---|
 | `BaseBarConstructor` | Configurable bar construction engine |
-| `SchemaMapping` | Explicit column-name mapping |
-| `BarRegistry` | Discover registered bar types |
+| `SchemaMapping` / `MinuteSchemaMapping` | Explicit column-name mapping |
+| `BarRegistry` / `MinuteBarRegistry` | Discover registered bar types |
+| `BarTypeSpec` | Machine-readable spec (params schema, output columns, capabilities) |
 | `EWMAThresholdEstimator` | Two-component adaptive threshold |
 | `StaticThresholdEstimator` | Fixed threshold |
 | `StaticCalibrationHelper` | Estimate good seeds from data |

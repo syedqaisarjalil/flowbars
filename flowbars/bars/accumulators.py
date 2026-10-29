@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 
-from flowbars.core import Bar, MinuteInfo, TickInfo
+from flowbars.core import Bar, MinuteInfo, TickInfo, validate_volume_semantics
 
 
 class BaseAccumulator(ABC):
@@ -34,6 +34,9 @@ class BaseAccumulator(ABC):
         self._bar_type = bar_type
         self._bar_id = 0
         self._has_tick = False
+        # Volume semantics — set by the constructor via ``configure_volume``.
+        self._multiplier = 1.0
+        self._volume_type = "base"
         # OHLCV state
         self._open = 0.0
         self._high = 0.0
@@ -44,6 +47,15 @@ class BaseAccumulator(ABC):
         self._num_ticks = 0
         self._open_ts = 0
         self._close_ts = 0
+
+    def configure_volume(self, multiplier: float, volume_type: str) -> None:
+        """Set the contract multiplier and volume-unit label.
+
+        The multiplier scales notional (``dollar_value``, dollar-metric
+        imbalance/run thresholds) while ``vwap`` stays a price.  Both values
+        are part of the accumulator's params identity and persisted state.
+        """
+        self._multiplier, self._volume_type = validate_volume_semantics(multiplier, volume_type)
 
     # ── tick ingestion ──────────────────────────────────────────────────
 
@@ -67,7 +79,7 @@ class BaseAccumulator(ABC):
 
         self._close = tick.price
         self._volume += tick.volume
-        self._dollar_value += tick.price * tick.volume
+        self._dollar_value += tick.price * tick.volume * self._multiplier
         self._num_ticks += 1
         self._close_ts = tick.timestamp
 
@@ -94,7 +106,7 @@ class BaseAccumulator(ABC):
 
         self._close = minute.close
         self._volume += minute.volume
-        self._dollar_value += minute.close * minute.volume
+        self._dollar_value += minute.close * minute.volume * self._multiplier
         self._num_ticks += 1
         self._close_ts = minute.timestamp
 
@@ -105,7 +117,8 @@ class BaseAccumulator(ABC):
         """The in-progress bar, or ``None`` if no ticks have been added."""
         if not self._has_tick:
             return None
-        vwap = self._dollar_value / self._volume if self._volume > 0.0 else 0.0
+        traded_notional = self._volume * self._multiplier
+        vwap = self._dollar_value / traded_notional if traded_notional > 0.0 else 0.0
         return Bar(
             bar_id=self._bar_id,
             open=self._open,
@@ -151,6 +164,11 @@ class BaseAccumulator(ABC):
         bar = self.current_bar
         assert bar is not None, "Cannot emit bar without ticks"
         self._bar_id += 1
+        self._reset_in_progress()
+        return bar
+
+    def _reset_in_progress(self) -> None:
+        """Clear the in-progress OHLCV accumulator without emitting a bar."""
         self._has_tick = False
         self._open = 0.0
         self._high = 0.0
@@ -161,7 +179,16 @@ class BaseAccumulator(ABC):
         self._num_ticks = 0
         self._open_ts = 0
         self._close_ts = 0
-        return bar
+
+    def discard(self) -> None:
+        """Drop the in-progress bar without emitting it.
+
+        Used by the ``"discard"`` session policy at a session boundary.  The
+        base implementation clears the OHLCV state; subclasses zero their own
+        scalar accumulators so no partial metric or overflow crosses the
+        boundary.  ``bar_id`` is not advanced — no bar was emitted.
+        """
+        self._reset_in_progress()
 
     # ── session boundaries ──────────────────────────────────────────────
 
@@ -190,11 +217,26 @@ class BaseAccumulator(ABC):
 
     # ── state persistence ───────────────────────────────────────────────
 
+    def get_params(self) -> dict[str, Any]:
+        """Return the configuration that defines this accumulator.
+
+        Params are the *identity* of a bar stream: they are hashed into the
+        constructor state so a resume with a mismatched configuration can be
+        rejected instead of silently changing bar semantics.
+        """
+        return {
+            "bar_type": self._bar_type,
+            "multiplier": self._multiplier,
+            "volume_type": self._volume_type,
+        }
+
     def get_state(self) -> dict[str, Any]:
         """Return a JSON-serializable dict of the accumulator's current state."""
         return {
             "bar_id": self._bar_id,
             "has_tick": self._has_tick,
+            "multiplier": self._multiplier,
+            "volume_type": self._volume_type,
             "open": self._open,
             "high": self._high if self._has_tick else 0.0,
             "low": self._low if self._has_tick else 0.0,
@@ -208,6 +250,10 @@ class BaseAccumulator(ABC):
 
     def load_state(self, state: dict[str, Any]) -> None:
         """Restore accumulator state from a saved state dict."""
+        self.configure_volume(
+            state.get("multiplier", self._multiplier),
+            state.get("volume_type", self._volume_type),
+        )
         self._bar_id = state["bar_id"]
         self._has_tick = state["has_tick"]
         self._open = state["open"]
@@ -252,6 +298,10 @@ class TickAccumulator(BaseAccumulator):
         self._cum_ticks = max(0.0, excess)
         return bar
 
+    def discard(self) -> None:
+        super().discard()
+        self._cum_ticks = 0.0
+
     def get_state(self) -> dict[str, Any]:
         state = super().get_state()
         state["cum_ticks"] = self._cum_ticks
@@ -288,6 +338,10 @@ class VolumeAccumulator(BaseAccumulator):
         self._cum_volume = excess
         return bar
 
+    def discard(self) -> None:
+        super().discard()
+        self._cum_volume = 0.0
+
     def get_state(self) -> dict[str, Any]:
         state = super().get_state()
         state["cum_volume"] = self._cum_volume
@@ -313,7 +367,7 @@ class DollarAccumulator(BaseAccumulator):
 
     def add_tick(self, tick: TickInfo) -> None:
         super().add_tick(tick)
-        self._cum_dollar += tick.price * tick.volume
+        self._cum_dollar += tick.price * tick.volume * self._multiplier
 
     def should_close(self, threshold: float) -> bool:
         return self._cum_dollar >= threshold
@@ -323,6 +377,10 @@ class DollarAccumulator(BaseAccumulator):
         excess = self._cum_dollar - threshold
         self._cum_dollar = excess
         return bar
+
+    def discard(self) -> None:
+        super().discard()
+        self._cum_dollar = 0.0
 
     def get_state(self) -> dict[str, Any]:
         state = super().get_state()
@@ -388,6 +446,11 @@ class TimeAccumulator(BaseAccumulator):
         self._next_boundary_ms += self._interval_ms
         return bar
 
+    def discard(self) -> None:
+        super().discard()
+        # Re-anchor to the first tick after the boundary.
+        self._next_boundary_ms = None
+
     def _compute_first_boundary(self, first_ts: int) -> int:
         """Compute the first closing boundary timestamp in milliseconds."""
         if self._anchor == "first_tick":
@@ -398,6 +461,12 @@ class TimeAccumulator(BaseAccumulator):
         if remainder == 0:
             return first_ts + self._interval_ms
         return first_ts - remainder + self._interval_ms
+
+    def get_params(self) -> dict[str, Any]:
+        params = super().get_params()
+        params["interval_ms"] = self._interval_ms
+        params["anchor"] = self._anchor
+        return params
 
     def get_state(self) -> dict[str, Any]:
         state = super().get_state()
@@ -446,7 +515,7 @@ class ImbalanceAccumulator(BaseAccumulator):
         super().add_tick(tick)
         # First-tick exclusion: if side is NaN, imbalance contribution is 0
         if tick.side is not None and not math.isnan(tick.side):
-            value = _imbalance_metric(tick, self._metric)
+            value = _imbalance_metric(tick, self._metric, self._multiplier)
             self._signed_imbalance += tick.side * value
 
     def should_close(self, threshold: float) -> bool:
@@ -471,6 +540,15 @@ class ImbalanceAccumulator(BaseAccumulator):
         self._signed_imbalance = sign * max(0.0, excess)
         return bar
 
+    def discard(self) -> None:
+        super().discard()
+        self._signed_imbalance = 0.0
+
+    def get_params(self) -> dict[str, Any]:
+        params = super().get_params()
+        params["metric"] = self._metric
+        return params
+
     def get_state(self) -> dict[str, Any]:
         state = super().get_state()
         state["signed_imbalance"] = self._signed_imbalance
@@ -483,17 +561,17 @@ class ImbalanceAccumulator(BaseAccumulator):
         self._metric = state.get("metric", "tick")
 
 
-def _imbalance_metric(tick: TickInfo, metric: str) -> float:
+def _imbalance_metric(tick: TickInfo, metric: str, multiplier: float = 1.0) -> float:
     """Extract the imbalance weight from a tick."""
     if metric == "tick":
         return 1.0
     elif metric == "volume":
         return tick.volume
     else:  # "dollar"
-        return tick.price * tick.volume
+        return tick.price * tick.volume * multiplier
 
 
-def _minute_metric(minute: MinuteInfo, metric: str) -> float:
+def _minute_metric(minute: MinuteInfo, metric: str, multiplier: float = 1.0) -> float:
     """Extract the imbalance/run weight from a minute candle.
 
     Mirrors :func:`_imbalance_metric` for the minute path. ``"tick"`` is not
@@ -505,7 +583,7 @@ def _minute_metric(minute: MinuteInfo, metric: str) -> float:
     elif metric == "volume":
         return minute.volume
     else:  # "dollar"
-        return minute.close * minute.volume
+        return minute.close * minute.volume * multiplier
 
 
 class RunAccumulator(BaseAccumulator):
@@ -550,7 +628,7 @@ class RunAccumulator(BaseAccumulator):
     def add_tick(self, tick: TickInfo) -> None:
         super().add_tick(tick)
         side = tick.side if tick.side is not None else np.nan
-        self._accumulate_run(side, _imbalance_metric(tick, self._metric))
+        self._accumulate_run(side, _imbalance_metric(tick, self._metric, self._multiplier))
 
     def _accumulate_run(self, side: float, metric_value: float) -> None:
         """Accumulate one same-sign run step (shared by tick and minute paths)."""
@@ -617,6 +695,19 @@ class RunAccumulator(BaseAccumulator):
         self._sell_cum = 0.0
         # Keep _run_sign — the overflow run continues into the next bar
         return bar
+
+    def discard(self) -> None:
+        super().discard()
+        self._banked = 0.0
+        self._run_sign = np.nan
+        self._run_cum = 0.0
+        self._buy_cum = 0.0
+        self._sell_cum = 0.0
+
+    def get_params(self) -> dict[str, Any]:
+        params = super().get_params()
+        params["metric"] = self._metric
+        return params
 
     def get_state(self) -> dict[str, Any]:
         state = super().get_state()

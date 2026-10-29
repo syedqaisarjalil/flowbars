@@ -40,6 +40,14 @@ class ThresholdEstimator(ABC):
         """The threshold value to use for the bar currently being built."""
         ...
 
+    def get_params(self) -> dict[str, Any]:
+        """Return the configuration that defines this estimator.
+
+        Params exclude mutable runtime values (seeds, accumulated EWMA terms)
+        and are hashed into constructor state for resume validation.
+        """
+        return {}
+
     @abstractmethod
     def get_state(self) -> dict[str, Any]:
         """Return a JSON-serializable dict of the estimator's current state."""
@@ -115,6 +123,9 @@ class StaticThresholdEstimator(ThresholdEstimator):
     @property
     def current_threshold(self) -> float:
         return self._threshold
+
+    def get_params(self) -> dict[str, Any]:
+        return {"threshold": self._threshold}
 
     def get_state(self) -> dict[str, Any]:
         return {
@@ -247,6 +258,15 @@ class EWMAThresholdEstimator(ThresholdEstimator):
         )
         self._n_updates += 1
 
+    def get_params(self) -> dict[str, Any]:
+        # Initial seeds are excluded: the saved state supersedes them on
+        # resume, so a differing seed does not change bar semantics.
+        return {
+            "bar_family": self._bar_family,
+            "span": self._span,
+            "halflife": self._halflife,
+        }
+
     def get_state(self) -> dict[str, Any]:
         return {
             "bar_family": self._bar_family,
@@ -349,6 +369,8 @@ class StaticCalibrationHelper:
         ticks: list[TickInfo],
         bar_type: str,
         target_bars_per_day: float,
+        *,
+        multiplier: float = 1.0,
     ) -> float:
         """Estimate a fixed threshold to produce approximately *target_bars_per_day*.
 
@@ -366,6 +388,9 @@ class StaticCalibrationHelper:
             ``"run_tick"``, ``"run_volume"``, ``"run_dollar"``.
         target_bars_per_day : float
             Desired number of bars per trading day.
+        multiplier : float
+            Contract multiplier applied to notional metrics (``"dollar"`` and
+            ``"*_dollar"``).  Must match the constructor's ``multiplier``.
 
         Returns
         -------
@@ -392,7 +417,7 @@ class StaticCalibrationHelper:
             total_vol = sum(t.volume for t in ticks)
             return total_vol / target_total
         elif bar_type == "dollar":
-            total_dollar = sum(t.price * t.volume for t in ticks)
+            total_dollar = sum(t.price * t.volume for t in ticks) * multiplier
             return total_dollar / target_total
         elif bar_type == "time":
             raise ValueError(
@@ -400,10 +425,12 @@ class StaticCalibrationHelper:
             )
         elif bar_type.startswith("imbalance_"):
             return StaticCalibrationHelper._simulate_imbalance_threshold(
-                ticks, bar_type, target_total
+                ticks, bar_type, target_total, multiplier
             )
         elif bar_type.startswith("run_"):
-            return StaticCalibrationHelper._simulate_run_threshold(ticks, bar_type, target_total)
+            return StaticCalibrationHelper._simulate_run_threshold(
+                ticks, bar_type, target_total, multiplier
+            )
         else:
             raise ValueError(f"Unknown bar type: {bar_type!r}")
 
@@ -414,6 +441,8 @@ class StaticCalibrationHelper:
         metric: str = "tick",
         span: float = 20.0,
         target_bars: int = 50,
+        *,
+        multiplier: float = 1.0,
     ) -> dict[str, float]:
         """Estimate initial EWMA seeds from historical tick data.
 
@@ -434,6 +463,9 @@ class StaticCalibrationHelper:
             EWMA span used for warming.
         target_bars : int
             Approximate number of bars to simulate for seed estimation.
+        multiplier : float
+            Contract multiplier applied to the ``"dollar"`` metric.  Must
+            match the constructor's ``multiplier``.
 
         Returns
         -------
@@ -452,18 +484,20 @@ class StaticCalibrationHelper:
 
         # Simulate with a threshold targeting ~target_bars bars
         threshold = StaticCalibrationHelper.estimate_fixed_threshold(
-            ticks, bar_type, float(target_bars)
+            ticks, bar_type, float(target_bars), multiplier=multiplier
         )
 
         if bar_family == "imbalance":
-            t_stats, proportion_stats = _simulate_imbalance_bars(ticks, metric, threshold)
+            t_stats, proportion_stats = _simulate_imbalance_bars(
+                ticks, metric, threshold, multiplier
+            )
         else:
-            t_stats, proportion_stats = _simulate_run_bars(ticks, metric, threshold)
+            t_stats, proportion_stats = _simulate_run_bars(ticks, metric, threshold, multiplier)
 
         if not t_stats:
             # All ticks fell into a single bar; use that as the seed
             return {
-                "initial_ewa_t": float(_total_metric(ticks, metric) if ticks else 1.0),
+                "initial_ewa_t": float(_total_metric(ticks, metric, multiplier) if ticks else 1.0),
                 "initial_ewa_proportion": proportion_stats[0] if proportion_stats else 0.5,
             }
 
@@ -487,16 +521,17 @@ class StaticCalibrationHelper:
         ticks: list[TickInfo],
         bar_type: str,
         target_bars_per_day: float,
+        multiplier: float = 1.0,
     ) -> float:
         """Estimate threshold for imbalance bars via simulation."""
         metric = _metric_from_bar_type(bar_type)
-        total = _total_metric(ticks, metric)
+        total = _total_metric(ticks, metric, multiplier)
 
         # Initial guess: same as standard bar formula
         guess = total / target_bars_per_day
 
         # Single-pass simulation with this guess
-        t_stats, _ = _simulate_imbalance_bars(ticks, metric, guess)
+        t_stats, _ = _simulate_imbalance_bars(ticks, metric, guess, multiplier)
 
         n_bars = len(t_stats)
         if n_bars == 0:
@@ -514,13 +549,14 @@ class StaticCalibrationHelper:
         ticks: list[TickInfo],
         bar_type: str,
         target_bars_per_day: float,
+        multiplier: float = 1.0,
     ) -> float:
         """Estimate threshold for run bars via simulation."""
         metric = _metric_from_bar_type(bar_type)
-        total = _total_metric(ticks, metric)
+        total = _total_metric(ticks, metric, multiplier)
 
         guess = total / target_bars_per_day
-        t_stats, _ = _simulate_run_bars(ticks, metric, guess)
+        t_stats, _ = _simulate_run_bars(ticks, metric, guess, multiplier)
 
         n_bars = len(t_stats)
         if n_bars == 0:
@@ -542,30 +578,31 @@ def _metric_from_bar_type(bar_type: str) -> str:
     return bar_type
 
 
-def _total_metric(ticks: list[TickInfo], metric: str) -> float:
+def _total_metric(ticks: list[TickInfo], metric: str, multiplier: float = 1.0) -> float:
     """Total metric value across all ticks."""
     if metric == "tick":
         return float(len(ticks))
     elif metric == "volume":
         return sum(t.volume for t in ticks)
     else:  # dollar
-        return sum(t.price * t.volume for t in ticks)
+        return sum(t.price * t.volume for t in ticks) * multiplier
 
 
-def _metric_value(tick: TickInfo, metric: str) -> float:
+def _metric_value(tick: TickInfo, metric: str, multiplier: float = 1.0) -> float:
     """Extract the metric value from a single tick."""
     if metric == "tick":
         return 1.0
     elif metric == "volume":
         return tick.volume
     else:  # dollar
-        return tick.price * tick.volume
+        return tick.price * tick.volume * multiplier
 
 
 def _simulate_imbalance_bars(
     ticks: list[TickInfo],
     metric: str,
     threshold: float,
+    multiplier: float = 1.0,
 ) -> tuple[list[float], list[float]]:
     """Simulate imbalance-bar construction, returning per-bar (T, θ) pairs.
 
@@ -583,7 +620,7 @@ def _simulate_imbalance_bars(
     total_metric = 0.0
 
     for tick in ticks:
-        metric_val = _metric_value(tick, metric)
+        metric_val = _metric_value(tick, metric, multiplier)
         side = tick.side if tick.side is not None else np.nan
 
         total_metric += metric_val
@@ -608,6 +645,7 @@ def _simulate_run_bars(
     ticks: list[TickInfo],
     metric: str,
     threshold: float,
+    multiplier: float = 1.0,
 ) -> tuple[list[float], list[float]]:
     """Simulate run-bar construction, returning per-bar (T, P⁺) pairs.
 
@@ -629,7 +667,7 @@ def _simulate_run_bars(
     sell_run_total = 0.0
 
     for tick in ticks:
-        metric_val = _metric_value(tick, metric)
+        metric_val = _metric_value(tick, metric, multiplier)
         side = tick.side if tick.side is not None else np.nan
 
         if first_tick:
@@ -724,11 +762,15 @@ class MinuteCalibrationHelper:
         minutes: list[MinuteInfo],
         target_bars_per_day: float,
         *,
+        multiplier: float = 1.0,
         day_length_ms: int = 86_400_000,
     ) -> float:
-        """Dollar threshold from the total ``close × volume`` notional."""
+        """Dollar threshold from the total ``close × volume`` notional.
+
+        ``multiplier`` scales the notional and must match the constructor's.
+        """
         target_total = _minute_target_total(minutes, target_bars_per_day, day_length_ms)
-        return sum(m.close * m.volume for m in minutes) / target_total
+        return sum(m.close * m.volume for m in minutes) * multiplier / target_total
 
     @staticmethod
     def estimate_volatility_threshold(
@@ -786,6 +828,7 @@ class MinuteCalibrationHelper:
         *,
         dollar_threshold: float | None = None,
         volatility_threshold: float | None = None,
+        multiplier: float = 1.0,
         max_iter: int = 80,
         day_length_ms: int = 86_400_000,
     ) -> tuple[float, float]:
@@ -795,6 +838,9 @@ class MinuteCalibrationHelper:
         bisected.  With neither supplied, a single scalar ``c`` scales both
         mean per-minute metrics (a documented one-parameter ray) and is
         bisected.
+
+        ``multiplier`` scales the dollar leg and must match the
+        constructor's; a supplied ``dollar_threshold`` is returned unchanged.
         """
         target_total = _minute_target_total(minutes, target_bars_per_day, day_length_ms)
 
@@ -808,7 +854,9 @@ class MinuteCalibrationHelper:
                 raise ValueError("dollar_threshold must be non-negative")
 
             def count_vol(vol_threshold: float) -> int:
-                return _simulate_hybrid_bar_count(minutes, dollar_threshold, vol_threshold)
+                return _simulate_hybrid_bar_count(
+                    minutes, dollar_threshold, vol_threshold, multiplier
+                )
 
             return (
                 float(dollar_threshold),
@@ -820,7 +868,9 @@ class MinuteCalibrationHelper:
                 raise ValueError("volatility_threshold must be non-negative")
 
             def count_dollar(dollar_thr: float) -> int:
-                return _simulate_hybrid_bar_count(minutes, dollar_thr, volatility_threshold)
+                return _simulate_hybrid_bar_count(
+                    minutes, dollar_thr, volatility_threshold, multiplier
+                )
 
             return (
                 _bisect_threshold(count_dollar, target_total, max_iter),
@@ -828,11 +878,11 @@ class MinuteCalibrationHelper:
             )
 
         n = len(minutes)
-        mean_dollar = sum(m.close * m.volume for m in minutes) / n
+        mean_dollar = sum(m.close * m.volume for m in minutes) * multiplier / n
         mean_vol = sum(_minute_volatility_metrics(minutes)) / n
 
         def count_ray(c: float) -> int:
-            return _simulate_hybrid_bar_count(minutes, c * mean_dollar, c * mean_vol)
+            return _simulate_hybrid_bar_count(minutes, c * mean_dollar, c * mean_vol, multiplier)
 
         c = _bisect_threshold(count_ray, target_total, max_iter)
         return (float(c * mean_dollar), float(c * mean_vol))
@@ -844,13 +894,16 @@ class MinuteCalibrationHelper:
         metric: str = "volume",
         span: float = 20.0,
         target_bars: int = 50,
+        *,
+        multiplier: float = 1.0,
     ) -> dict[str, float]:
         """Estimate EWMA seeds for minute imbalance/run bars.
 
         Simulates fixed-threshold minute bars, collects per-bar statistics,
-        and warms an EWMA forward to produce the seeds.
+        and warms an EWMA forward to produce the seeds.  ``multiplier`` scales
+        the ``"dollar"`` metric and must match the constructor's.
         """
-        return _minute_ewma_seeds(minutes, bar_family, metric, span, target_bars)
+        return _minute_ewma_seeds(minutes, bar_family, metric, span, target_bars, multiplier)
 
 
 # ── minute calibration internals ────────────────────────────────────────────
@@ -900,6 +953,7 @@ def _simulate_hybrid_bar_count(
     minutes: list[MinuteInfo],
     dollar_threshold: float,
     volatility_threshold: float,
+    multiplier: float = 1.0,
 ) -> int:
     """Count hybrid bars produced by the given threshold pair."""
     cum_dollar = 0.0
@@ -907,7 +961,7 @@ def _simulate_hybrid_bar_count(
     prev_close: float | None = None
     count = 0
     for m in minutes:
-        cum_dollar += m.close * m.volume
+        cum_dollar += m.close * m.volume * multiplier
         if prev_close is None or prev_close == 0.0:
             metric = 0.0
         else:
@@ -954,14 +1008,14 @@ def _bisect_threshold(
     return lo
 
 
-def _minute_metric_value(m: MinuteInfo, metric: str) -> float:
+def _minute_metric_value(m: MinuteInfo, metric: str, multiplier: float = 1.0) -> float:
     """Imbalance/run weight of one minute candle."""
     if metric == "tick":
         raise ValueError("metric='tick' is not available for minute input")
     if metric == "volume":
         return m.volume
     if metric == "dollar":
-        return m.close * m.volume
+        return m.close * m.volume * multiplier
     raise ValueError(f"metric must be 'volume' or 'dollar', got {metric!r}")
 
 
@@ -979,6 +1033,7 @@ def _minute_ewma_seeds(
     metric: str,
     span: float,
     target_bars: int,
+    multiplier: float = 1.0,
 ) -> dict[str, float]:
     """Shared implementation of :meth:`MinuteCalibrationHelper.estimate_ewma_seeds`."""
     if not minutes:
@@ -991,15 +1046,17 @@ def _minute_ewma_seeds(
         raise ValueError(f"target_bars must be positive, got {target_bars}")
 
     signs = _minute_signs(minutes)
-    total = sum(_minute_metric_value(m, metric) for m in minutes)
+    total = sum(_minute_metric_value(m, metric, multiplier) for m in minutes)
     threshold = total / target_bars
 
     if bar_family == "imbalance":
         t_stats, proportion_stats = _simulate_minute_imbalance_bars(
-            minutes, metric, threshold, signs
+            minutes, metric, threshold, signs, multiplier
         )
     else:
-        t_stats, proportion_stats = _simulate_minute_run_bars(minutes, metric, threshold, signs)
+        t_stats, proportion_stats = _simulate_minute_run_bars(
+            minutes, metric, threshold, signs, multiplier
+        )
 
     if not t_stats:
         return {
@@ -1022,6 +1079,7 @@ def _simulate_minute_imbalance_bars(
     metric: str,
     threshold: float,
     signs: list[float],
+    multiplier: float = 1.0,
 ) -> tuple[list[float], list[float]]:
     """Simulate minute imbalance bars, returning per-bar ``(T, θ)``."""
     t_stats: list[float] = []
@@ -1030,7 +1088,7 @@ def _simulate_minute_imbalance_bars(
     total_metric = 0.0
 
     for m, side in zip(minutes, signs):
-        metric_val = _minute_metric_value(m, metric)
+        metric_val = _minute_metric_value(m, metric, multiplier)
         total_metric += metric_val
         if not math.isnan(side):
             signed_imbalance += side * metric_val
@@ -1051,6 +1109,7 @@ def _simulate_minute_run_bars(
     metric: str,
     threshold: float,
     signs: list[float],
+    multiplier: float = 1.0,
 ) -> tuple[list[float], list[float]]:
     """Simulate minute run bars, returning per-bar ``(T, P⁺)``."""
     t_stats: list[float] = []
@@ -1064,7 +1123,7 @@ def _simulate_minute_run_bars(
     sell_run_total = 0.0
 
     for m, side in zip(minutes, signs):
-        metric_val = _minute_metric_value(m, metric)
+        metric_val = _minute_metric_value(m, metric, multiplier)
 
         if first_minute:
             first_minute = False

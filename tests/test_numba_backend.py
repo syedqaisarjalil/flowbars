@@ -784,6 +784,7 @@ class TestNumbaEdgeCases:
             "open_ts",
             "close_ts",
             "bar_type",
+            "partial",
         ]:
             assert col in result.columns
 
@@ -980,7 +981,7 @@ class TestJITFunctionsDirect:
         volumes = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float64)
         threshold = 2.0
 
-        bar_data = _tick_bars_numba(timestamps, prices, volumes, threshold)
+        bar_data = _tick_bars_numba(timestamps, prices, volumes, threshold, 1.0)
         assert bar_data.shape[1] == 11  # 11 columns
         assert bar_data.shape[0] == 2  # 2 bars (ticks 1-2, ticks 3-4)
 
@@ -998,7 +999,7 @@ class TestJITFunctionsDirect:
         volumes = np.array([3000.0, 4000.0, 5000.0, 2000.0], dtype=np.float64)
         threshold = 1_000_000.0  # volume threshold
 
-        bar_data = _volume_bars_numba(timestamps, prices, volumes, threshold)
+        bar_data = _volume_bars_numba(timestamps, prices, volumes, threshold, 1.0)
         # 3000+4000+5000=12000 < 1M, no close; 2000 → 14000 (no)
         # Wait: all volumes * price = dollar value. But this is volume bars.
         # The volumes are [3000, 4000, 5000, 2000], threshold=1M
@@ -1015,7 +1016,7 @@ class TestJITFunctionsDirect:
         # dollar values: $300k, $400k, $500k, $100k
         threshold = 1_000_000.0
 
-        bar_data = _dollar_bars_numba(timestamps, prices, volumes, threshold)
+        bar_data = _dollar_bars_numba(timestamps, prices, volumes, threshold, 1.0)
         assert bar_data.shape[0] == 1  # One bar: 300k+400k+500k=1.2M, excess=200k
         cols = _bar_data_to_columns(bar_data)
         assert cols["num_ticks"][0] == 3
@@ -1031,7 +1032,7 @@ class TestJITFunctionsDirect:
         sides = resolve_tick_signs(prices, None)
         threshold = 2.0
 
-        bar_data = _imbalance_bars_numba(timestamps, prices, volumes, sides, threshold, 0)
+        bar_data = _imbalance_bars_numba(timestamps, prices, volumes, sides, threshold, 0, 1.0)
         # tick1 NaN → exc, tick2 +1 → 1, tick3 +1 → 2 >=2 → CLOSE bar0 (ticks 1-3)
         # tick4 +1 → 1 (no close)
         assert bar_data.shape[0] == 1
@@ -1048,7 +1049,7 @@ class TestJITFunctionsDirect:
         sides = resolve_tick_signs(prices, None)
         threshold = 2.0
 
-        bar_data = _run_bars_numba(timestamps, prices, volumes, sides, threshold, 0)
+        bar_data = _run_bars_numba(timestamps, prices, volumes, sides, threshold, 0, 1.0)
         # tick1: NaN, tick2: +1 (run_cum=2, same dir since NaN matches +1)
         # → total=2 >= 2 → CLOSE bar0
         # tick3: -1, tick4: -1 → run_cum=2 → total=2 >= 2 → CLOSE bar1
@@ -1066,7 +1067,7 @@ class TestJITFunctionsDirect:
         volumes = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float64)
 
         # Clock anchor: first boundary at 1000ms (0+1000 since 0%1000==0)
-        bar_data = _time_bars_numba(timestamps, prices, volumes, 1000, 0)
+        bar_data = _time_bars_numba(timestamps, prices, volumes, 1000, 0, 1.0)
         # Ticks at 0, 300, 700 → close_ts=700 < 1000 → no close
         # Tick at 1200 → close_ts=1200 >= 1000 → CLOSE bar0
         assert bar_data.shape[0] == 1

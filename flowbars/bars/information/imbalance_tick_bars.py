@@ -65,6 +65,7 @@ class ImbalanceTickBarConstructor(BaseBarConstructor):
         initial_ewa_t: float = 1.0,
         initial_ewa_proportion: float = 0.5,
         warmup_bars: int = 0,
+        warmup_minutes: int | None = None,
         calendar: TradingCalendar | None = None,
         schema: SchemaMapping | None = None,
         watermark: str | None = "timestamp",
@@ -73,6 +74,8 @@ class ImbalanceTickBarConstructor(BaseBarConstructor):
         backend: Literal["python", "numba"] = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
+        multiplier: float = 1.0,
+        volume_type: str = "base",
     ) -> None:
         accumulator = ImbalanceAccumulator(bar_type="imbalance_tick", metric="tick")
         estimator = EWMAThresholdEstimator(
@@ -92,9 +95,12 @@ class ImbalanceTickBarConstructor(BaseBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            warmup_minutes=warmup_minutes,
             backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
+            multiplier=multiplier,
+            volume_type=volume_type,
         )
 
     @classmethod
@@ -122,6 +128,7 @@ def compute_imbalance_tick_bars(
     initial_ewa_t: float = 1.0,
     initial_ewa_proportion: float = 0.5,
     warmup_bars: int = 0,
+    warmup_minutes: int | None = None,
     schema: SchemaMapping | None = None,
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
@@ -131,6 +138,8 @@ def compute_imbalance_tick_bars(
     stream_id: str = "default",
     on_bar: Any = None,
     on_threshold_update: Any = None,
+    multiplier: float = 1.0,
+    volume_type: str = "base",
 ) -> pd.DataFrame:
     """Build tick-imbalance bars from a DataFrame of ticks.
 
@@ -173,6 +182,7 @@ def compute_imbalance_tick_bars(
         initial_ewa_t=initial_ewa_t,
         initial_ewa_proportion=initial_ewa_proportion,
         warmup_bars=warmup_bars,
+        warmup_minutes=warmup_minutes,
         calendar=calendar,
         schema=schema,
         watermark=watermark,
@@ -181,6 +191,8 @@ def compute_imbalance_tick_bars(
         stream_id=stream_id,
         on_bar=on_bar,
         on_threshold_update=on_threshold_update,
+        multiplier=multiplier,
+        volume_type=volume_type,
     )
     return ctor.batch(ticks_df)
 

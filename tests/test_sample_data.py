@@ -81,6 +81,7 @@ class TestQuickstart:
             "open_ts",
             "close_ts",
             "bar_type",
+            "partial",
         }
         # Bars should be tick bars
         assert (bars["bar_type"] == "tick").all()
