@@ -163,6 +163,16 @@ class BaseAccumulator(ABC):
         self._close_ts = 0
         return bar
 
+    # ── session boundaries ──────────────────────────────────────────────
+
+    def on_session_boundary(self) -> None:  # noqa: B027
+        """Called after a session-boundary force-close.
+
+        Default no-op.  Accumulators that carry a price across bars (the
+        volatility and hybrid minute accumulators) reset it here so a session
+        gap contributes no artificial return.
+        """
+
     # ── bar-close statistics ────────────────────────────────────────────
 
     def get_close_stats(self) -> tuple[float, float]:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -33,6 +33,12 @@ class VolumeBarConstructor(BaseBarConstructor):
     strict_ordering : bool, default False
         If True, raise ``TickDataError`` when a tick arrives with a timestamp
         earlier than the previous tick's (out-of-order input).
+    warmup_bars : int, default 0
+        Number of initial bars to discard (not returned).  Warmup bars still
+        fire ``on_bar`` and update the estimator.
+    backend : str, default ``"python"``
+        ``"python"`` or ``"numba"``.  The numba backend accelerates
+        :meth:`batch` only; ``update`` always uses Python.
     stream_id : str, default ``"default"``
     on_bar : callable or None
     on_threshold_update : callable or None
@@ -46,6 +52,8 @@ class VolumeBarConstructor(BaseBarConstructor):
         watermark: str | None = "timestamp",
         stream_id: str = "default",
         strict_ordering: bool = False,
+        warmup_bars: int = 0,
+        backend: Literal["python", "numba"] = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
     ) -> None:
@@ -63,7 +71,8 @@ class VolumeBarConstructor(BaseBarConstructor):
             watermark=watermark,
             stream_id=stream_id,
             strict_ordering=strict_ordering,
-            warmup_bars=0,
+            warmup_bars=warmup_bars,
+            backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
         )
@@ -78,9 +87,7 @@ class VolumeBarConstructor(BaseBarConstructor):
         """Reconstruct a ``VolumeBarConstructor`` from a saved state dict."""
         acc = VolumeAccumulator(bar_type="volume")
         est = StaticThresholdEstimator.from_state(state["threshold_estimator"])
-        inst: VolumeBarConstructor = BaseBarConstructor.from_state(
-            state, acc, est, calendar, schema
-        )  # type: ignore[assignment]
+        inst: VolumeBarConstructor = super().from_state(state, acc, est, calendar, schema)  # type: ignore[assignment]
         return inst
 
 
@@ -91,6 +98,12 @@ def compute_volume_bars(
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    *,
+    warmup_bars: int = 0,
+    backend: Literal["python", "numba"] = "python",
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
 ) -> pd.DataFrame:
     """Build volume bars from a DataFrame of ticks.
 
@@ -108,6 +121,13 @@ def compute_volume_bars(
         If True, raise ``TickDataError`` when a tick arrives with a timestamp
         earlier than the previous tick's (out-of-order input).
     calendar : TradingCalendar, optional
+    warmup_bars : int, default 0
+        Number of initial bars to discard.
+    backend : str, default ``"python"``
+        ``"python"`` or ``"numba"``.
+    stream_id : str, default ``"default"``
+    on_bar : callable or None
+    on_threshold_update : callable or None
 
     Returns
     -------
@@ -119,7 +139,12 @@ def compute_volume_bars(
         calendar=calendar,
         schema=schema,
         watermark=watermark,
+        stream_id=stream_id,
         strict_ordering=strict_ordering,
+        warmup_bars=warmup_bars,
+        backend=backend,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
     )
     return ctor.batch(ticks_df)
 

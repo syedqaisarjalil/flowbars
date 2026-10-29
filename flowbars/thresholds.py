@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 
-from flowbars.core import ThresholdError, TickInfo
+from flowbars.core import MinuteInfo, ThresholdError, TickInfo
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ABC
@@ -30,8 +30,8 @@ class ThresholdEstimator(ABC):
     """
 
     @abstractmethod
-    def update(self, tick: TickInfo) -> None:
-        """Called on every tick.  Subclasses may accumulate statistics."""
+    def update(self, tick: TickInfo | MinuteInfo) -> None:
+        """Called on every tick/minute.  Subclasses may accumulate statistics."""
         ...
 
     @property
@@ -108,7 +108,7 @@ class StaticThresholdEstimator(ThresholdEstimator):
 
     # ── ThresholdEstimator interface ──────────────────────────────────────
 
-    def update(self, tick: TickInfo) -> None:
+    def update(self, tick: TickInfo | MinuteInfo) -> None:
         """No-op — the threshold never changes."""
         pass
 
@@ -211,7 +211,7 @@ class EWMAThresholdEstimator(ThresholdEstimator):
 
     # ── ThresholdEstimator interface ──────────────────────────────────────
 
-    def update(self, tick: TickInfo) -> None:
+    def update(self, tick: TickInfo | MinuteInfo) -> None:
         """No-op — the EWMA updates only at bar boundaries."""
         pass
 
@@ -383,27 +383,27 @@ class StaticCalibrationHelper:
         if target_bars_per_day <= 0:
             raise ValueError(f"target_bars_per_day must be positive, got {target_bars_per_day}")
 
+        target_total = target_bars_per_day * _observed_days([t.timestamp for t in ticks])
+
         # Standard bars: exact division
         if bar_type == "tick":
-            return len(ticks) / target_bars_per_day
+            return len(ticks) / target_total
         elif bar_type == "volume":
             total_vol = sum(t.volume for t in ticks)
-            return total_vol / target_bars_per_day
+            return total_vol / target_total
         elif bar_type == "dollar":
             total_dollar = sum(t.price * t.volume for t in ticks)
-            return total_dollar / target_bars_per_day
+            return total_dollar / target_total
         elif bar_type == "time":
             raise ValueError(
                 "Time bars use an interval (ms), not a threshold. Use interval_ms directly."
             )
         elif bar_type.startswith("imbalance_"):
             return StaticCalibrationHelper._simulate_imbalance_threshold(
-                ticks, bar_type, target_bars_per_day
+                ticks, bar_type, target_total
             )
         elif bar_type.startswith("run_"):
-            return StaticCalibrationHelper._simulate_run_threshold(
-                ticks, bar_type, target_bars_per_day
-            )
+            return StaticCalibrationHelper._simulate_run_threshold(ticks, bar_type, target_total)
         else:
             raise ValueError(f"Unknown bar type: {bar_type!r}")
 
@@ -686,3 +686,423 @@ def _same_direction(a: float, b: float) -> bool:
     if np.isnan(a) or np.isnan(b):
         return True
     return a == b
+
+
+def _observed_days(timestamps: list[int], day_length_ms: int = 86_400_000) -> int:
+    """Count distinct UTC day buckets covered by *timestamps*."""
+    return len({int(ts) // day_length_ms for ts in timestamps})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Minute calibration
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class MinuteCalibrationHelper:
+    """Deterministic threshold calibration from historical minute candles.
+
+    All methods are static and side-effect free: repeated calls on the same
+    input return identical values (no RNG, fixed iteration counts).
+
+    Targets are expressed as bars per UTC day and scaled by the number of
+    distinct UTC day buckets observed in the sample.
+    """
+
+    @staticmethod
+    def estimate_volume_threshold(
+        minutes: list[MinuteInfo],
+        target_bars_per_day: float,
+        *,
+        day_length_ms: int = 86_400_000,
+    ) -> float:
+        """Volume threshold from the total minute volume."""
+        target_total = _minute_target_total(minutes, target_bars_per_day, day_length_ms)
+        return sum(m.volume for m in minutes) / target_total
+
+    @staticmethod
+    def estimate_dollar_threshold(
+        minutes: list[MinuteInfo],
+        target_bars_per_day: float,
+        *,
+        day_length_ms: int = 86_400_000,
+    ) -> float:
+        """Dollar threshold from the total ``close × volume`` notional."""
+        target_total = _minute_target_total(minutes, target_bars_per_day, day_length_ms)
+        return sum(m.close * m.volume for m in minutes) / target_total
+
+    @staticmethod
+    def estimate_volatility_threshold(
+        minutes: list[MinuteInfo],
+        target_bars_per_day: float,
+        *,
+        day_length_ms: int = 86_400_000,
+    ) -> float:
+        """Volatility threshold from cumulative absolute close-to-close returns."""
+        target_total = _minute_target_total(minutes, target_bars_per_day, day_length_ms)
+        return sum(_minute_volatility_metrics(minutes)) / target_total
+
+    @staticmethod
+    def estimate_range_threshold(
+        minutes: list[MinuteInfo],
+        target_bars_per_day: float,
+        *,
+        day_length_ms: int = 86_400_000,
+    ) -> float:
+        """Relative-range threshold from cumulative ``(high − low) / close``."""
+        target_total = _minute_target_total(minutes, target_bars_per_day, day_length_ms)
+        total = 0.0
+        for m in minutes:
+            total += (m.high - m.low) / m.close if m.close != 0.0 else 0.0
+        return total / target_total
+
+    @staticmethod
+    def estimate_renko_threshold(
+        minutes: list[MinuteInfo],
+        target_bars_per_day: float,
+        *,
+        max_iter: int = 80,
+        day_length_ms: int = 86_400_000,
+    ) -> float:
+        """Renko-displacement threshold by deterministic bisection.
+
+        Returns the largest threshold whose simulated bar count meets the
+        target; on ties between the final bracket endpoints, their midpoint.
+        """
+        target_total = _minute_target_total(minutes, target_bars_per_day, day_length_ms)
+
+        def count(threshold: float) -> int:
+            return _simulate_renko_bar_count(minutes, threshold)
+
+        max_disp = 0.0
+        for m in minutes:
+            if m.open > 0.0:
+                max_disp = max(max_disp, abs(m.close - m.open) / m.open)
+        return _bisect_threshold(count, target_total, max_iter, hi_start=max_disp or 1.0)
+
+    @staticmethod
+    def estimate_hybrid_thresholds(
+        minutes: list[MinuteInfo],
+        target_bars_per_day: float,
+        *,
+        dollar_threshold: float | None = None,
+        volatility_threshold: float | None = None,
+        max_iter: int = 80,
+        day_length_ms: int = 86_400_000,
+    ) -> tuple[float, float]:
+        """Estimate the ``(dollar, volatility)`` hybrid threshold pair.
+
+        With one threshold supplied, it is held fixed and the other is
+        bisected.  With neither supplied, a single scalar ``c`` scales both
+        mean per-minute metrics (a documented one-parameter ray) and is
+        bisected.
+        """
+        target_total = _minute_target_total(minutes, target_bars_per_day, day_length_ms)
+
+        if dollar_threshold is not None and volatility_threshold is not None:
+            if dollar_threshold < 0 or volatility_threshold < 0:
+                raise ValueError("Hybrid thresholds must be non-negative")
+            return float(dollar_threshold), float(volatility_threshold)
+
+        if dollar_threshold is not None:
+            if dollar_threshold < 0:
+                raise ValueError("dollar_threshold must be non-negative")
+
+            def count_vol(vol_threshold: float) -> int:
+                return _simulate_hybrid_bar_count(minutes, dollar_threshold, vol_threshold)
+
+            return (
+                float(dollar_threshold),
+                _bisect_threshold(count_vol, target_total, max_iter),
+            )
+
+        if volatility_threshold is not None:
+            if volatility_threshold < 0:
+                raise ValueError("volatility_threshold must be non-negative")
+
+            def count_dollar(dollar_thr: float) -> int:
+                return _simulate_hybrid_bar_count(minutes, dollar_thr, volatility_threshold)
+
+            return (
+                _bisect_threshold(count_dollar, target_total, max_iter),
+                float(volatility_threshold),
+            )
+
+        n = len(minutes)
+        mean_dollar = sum(m.close * m.volume for m in minutes) / n
+        mean_vol = sum(_minute_volatility_metrics(minutes)) / n
+
+        def count_ray(c: float) -> int:
+            return _simulate_hybrid_bar_count(minutes, c * mean_dollar, c * mean_vol)
+
+        c = _bisect_threshold(count_ray, target_total, max_iter)
+        return (float(c * mean_dollar), float(c * mean_vol))
+
+    @staticmethod
+    def estimate_ewma_seeds(
+        minutes: list[MinuteInfo],
+        bar_family: str,
+        metric: str = "volume",
+        span: float = 20.0,
+        target_bars: int = 50,
+    ) -> dict[str, float]:
+        """Estimate EWMA seeds for minute imbalance/run bars.
+
+        Simulates fixed-threshold minute bars, collects per-bar statistics,
+        and warms an EWMA forward to produce the seeds.
+        """
+        return _minute_ewma_seeds(minutes, bar_family, metric, span, target_bars)
+
+
+# ── minute calibration internals ────────────────────────────────────────────
+
+
+def _minute_target_total(
+    minutes: list[MinuteInfo],
+    target_bars_per_day: float,
+    day_length_ms: int,
+) -> float:
+    """Validate minute input and return the absolute bar target."""
+    if not minutes:
+        raise ValueError("Cannot calibrate from an empty minute list")
+    if target_bars_per_day <= 0:
+        raise ValueError(f"target_bars_per_day must be positive, got {target_bars_per_day}")
+    return target_bars_per_day * _observed_days([m.timestamp for m in minutes], day_length_ms)
+
+
+def _minute_volatility_metrics(minutes: list[MinuteInfo]) -> list[float]:
+    """Per-minute absolute close-to-close returns (first minute = 0)."""
+    metrics: list[float] = []
+    prev_close: float | None = None
+    for m in minutes:
+        if prev_close is None or prev_close == 0.0:
+            metrics.append(0.0)
+        else:
+            metrics.append(abs(m.close - prev_close) / prev_close)
+        prev_close = m.close
+    return metrics
+
+
+def _simulate_renko_bar_count(minutes: list[MinuteInfo], threshold: float) -> int:
+    """Count renko bars produced by *threshold* (anchor resets on each close)."""
+    anchor: float | None = None
+    count = 0
+    for m in minutes:
+        if anchor is None:
+            anchor = m.open
+        displacement = abs(m.close - anchor) / anchor if anchor > 0.0 else 0.0
+        if displacement >= threshold:
+            count += 1
+            anchor = None
+    return count
+
+
+def _simulate_hybrid_bar_count(
+    minutes: list[MinuteInfo],
+    dollar_threshold: float,
+    volatility_threshold: float,
+) -> int:
+    """Count hybrid bars produced by the given threshold pair."""
+    cum_dollar = 0.0
+    cum_vol = 0.0
+    prev_close: float | None = None
+    count = 0
+    for m in minutes:
+        cum_dollar += m.close * m.volume
+        if prev_close is None or prev_close == 0.0:
+            metric = 0.0
+        else:
+            metric = abs(m.close - prev_close) / prev_close
+        cum_vol += metric
+        prev_close = m.close
+        if cum_dollar >= dollar_threshold and cum_vol >= volatility_threshold:
+            count += 1
+            cum_dollar = max(0.0, cum_dollar - dollar_threshold)
+            cum_vol = max(0.0, cum_vol - volatility_threshold)
+    return count
+
+
+def _bisect_threshold(
+    count_fn: Any,
+    target: float,
+    max_iter: int,
+    hi_start: float = 1.0,
+) -> float:
+    """Find the largest threshold whose simulated count is >= *target*.
+
+    ``count_fn`` must be non-increasing in its threshold argument.  Returns
+    ``0.0`` when even a zero threshold cannot reach the target.
+    """
+    if count_fn(0.0) < target:
+        return 0.0
+
+    lo = 0.0
+    hi = hi_start if hi_start > 0.0 else 1.0
+    for _ in range(60):
+        if count_fn(hi) <= target:
+            break
+        hi *= 2.0
+
+    for _ in range(max_iter):
+        mid = 0.5 * (lo + hi)
+        if count_fn(mid) >= target:
+            lo = mid
+        else:
+            hi = mid
+
+    if count_fn(lo) == target and count_fn(hi) == target:
+        return 0.5 * (lo + hi)
+    return lo
+
+
+def _minute_metric_value(m: MinuteInfo, metric: str) -> float:
+    """Imbalance/run weight of one minute candle."""
+    if metric == "tick":
+        raise ValueError("metric='tick' is not available for minute input")
+    if metric == "volume":
+        return m.volume
+    if metric == "dollar":
+        return m.close * m.volume
+    raise ValueError(f"metric must be 'volume' or 'dollar', got {metric!r}")
+
+
+def _minute_signs(minutes: list[MinuteInfo]) -> list[float]:
+    """Derive the minute tick rule: sign(close_i − close_{i−1}), first NaN."""
+    from flowbars.tick_rule import derive_tick_sign
+
+    prices = np.asarray([m.close for m in minutes], dtype=np.float64)
+    return [float(sign) for sign in derive_tick_sign(prices)]
+
+
+def _minute_ewma_seeds(
+    minutes: list[MinuteInfo],
+    bar_family: str,
+    metric: str,
+    span: float,
+    target_bars: int,
+) -> dict[str, float]:
+    """Shared implementation of :meth:`MinuteCalibrationHelper.estimate_ewma_seeds`."""
+    if not minutes:
+        raise ValueError("Cannot estimate seeds from empty minute list")
+    if bar_family not in ("imbalance", "run"):
+        raise ValueError(f"bar_family must be 'imbalance' or 'run', got {bar_family!r}")
+    if metric not in ("volume", "dollar"):
+        raise ValueError(f"metric must be 'volume' or 'dollar', got {metric!r}")
+    if target_bars <= 0:
+        raise ValueError(f"target_bars must be positive, got {target_bars}")
+
+    signs = _minute_signs(minutes)
+    total = sum(_minute_metric_value(m, metric) for m in minutes)
+    threshold = total / target_bars
+
+    if bar_family == "imbalance":
+        t_stats, proportion_stats = _simulate_minute_imbalance_bars(
+            minutes, metric, threshold, signs
+        )
+    else:
+        t_stats, proportion_stats = _simulate_minute_run_bars(minutes, metric, threshold, signs)
+
+    if not t_stats:
+        return {
+            "initial_ewa_t": float(total if total > 0.0 else 1.0),
+            "initial_ewa_proportion": proportion_stats[0] if proportion_stats else 0.5,
+        }
+
+    alpha = 2.0 / (span + 1.0)
+    ewa_t = t_stats[0]
+    ewa_proportion = proportion_stats[0]
+    for t, p in zip(t_stats[1:], proportion_stats[1:]):
+        ewa_t = alpha * t + (1.0 - alpha) * ewa_t
+        ewa_proportion = alpha * p + (1.0 - alpha) * ewa_proportion
+
+    return {"initial_ewa_t": float(ewa_t), "initial_ewa_proportion": float(ewa_proportion)}
+
+
+def _simulate_minute_imbalance_bars(
+    minutes: list[MinuteInfo],
+    metric: str,
+    threshold: float,
+    signs: list[float],
+) -> tuple[list[float], list[float]]:
+    """Simulate minute imbalance bars, returning per-bar ``(T, θ)``."""
+    t_stats: list[float] = []
+    proportion_stats: list[float] = []
+    signed_imbalance = 0.0
+    total_metric = 0.0
+
+    for m, side in zip(minutes, signs):
+        metric_val = _minute_metric_value(m, metric)
+        total_metric += metric_val
+        if not math.isnan(side):
+            signed_imbalance += side * metric_val
+
+        if abs(signed_imbalance) >= threshold:
+            t_stats.append(total_metric)
+            proportion_stats.append(signed_imbalance / total_metric if total_metric > 0.0 else 0.0)
+            sign = 1.0 if signed_imbalance >= 0.0 else -1.0
+            excess = abs(signed_imbalance) - threshold
+            signed_imbalance = sign * max(0.0, excess)
+            total_metric = 0.0
+
+    return t_stats, proportion_stats
+
+
+def _simulate_minute_run_bars(
+    minutes: list[MinuteInfo],
+    metric: str,
+    threshold: float,
+    signs: list[float],
+) -> tuple[list[float], list[float]]:
+    """Simulate minute run bars, returning per-bar ``(T, P⁺)``."""
+    t_stats: list[float] = []
+    proportion_stats: list[float] = []
+
+    first_minute = True
+    banked = 0.0
+    run_sign = np.nan
+    run_cum = 0.0
+    buy_run_total = 0.0
+    sell_run_total = 0.0
+
+    for m, side in zip(minutes, signs):
+        metric_val = _minute_metric_value(m, metric)
+
+        if first_minute:
+            first_minute = False
+            run_sign = side
+            run_cum = metric_val
+        elif _same_direction(run_sign, side):
+            run_cum += metric_val
+            if np.isnan(run_sign) and not np.isnan(side):
+                run_sign = side
+        else:
+            banked += run_cum
+            if run_sign > 0.0:
+                buy_run_total += run_cum
+            elif run_sign < 0.0:
+                sell_run_total += run_cum
+            run_sign = side
+            run_cum = metric_val
+
+        total = banked + run_cum
+        if total >= threshold:
+            cur_buy = buy_run_total
+            cur_sell = sell_run_total
+            if run_sign > 0.0:
+                cur_buy += run_cum
+            elif run_sign < 0.0:
+                cur_sell += run_cum
+            total_buysell = cur_buy + cur_sell
+            proportion = cur_buy / total_buysell if total_buysell > 0.0 else 0.5
+
+            t_stats.append(total)
+            proportion_stats.append(proportion)
+
+            excess = total - threshold
+            banked = 0.0
+            buy_run_total = 0.0
+            sell_run_total = 0.0
+            run_cum = max(0.0, excess)
+            if run_cum == 0.0:
+                run_sign = np.nan
+
+    return t_stats, proportion_stats

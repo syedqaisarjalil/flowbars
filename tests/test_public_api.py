@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 import flowbars
+from flowbars.bars.numba_backend import _NUMBA_AVAILABLE
 from flowbars.bars.registry import BarRegistry
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -320,3 +321,237 @@ class TestAllCompleteness:
         """BarRegistry is accessible from the top-level package."""
         assert hasattr(flowbars, "BarRegistry")
         assert flowbars.BarRegistry is BarRegistry
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Minute path registry and exports
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+MINUTE_TYPES = [
+    "minute_volume",
+    "minute_dollar",
+    "minute_imbalance_volume",
+    "minute_imbalance_dollar",
+    "minute_run_volume",
+    "minute_run_dollar",
+    "minute_volatility",
+    "minute_range",
+    "minute_renko",
+    "minute_hybrid",
+]
+
+MINUTE_CONSTRUCTORS = [
+    "MinuteVolumeBarConstructor",
+    "MinuteDollarBarConstructor",
+    "MinuteImbalanceVolumeBarConstructor",
+    "MinuteImbalanceDollarBarConstructor",
+    "MinuteRunVolumeBarConstructor",
+    "MinuteRunDollarBarConstructor",
+    "MinuteVolatilityBarConstructor",
+    "MinuteRangeBarConstructor",
+    "MinuteRenkoBarConstructor",
+    "MinuteHybridBarConstructor",
+]
+
+MINUTE_COMPUTE_FUNCTIONS = [
+    "compute_volume_bars_from_minutes",
+    "compute_dollar_bars_from_minutes",
+    "compute_imbalance_volume_bars_from_minutes",
+    "compute_imbalance_dollar_bars_from_minutes",
+    "compute_run_volume_bars_from_minutes",
+    "compute_run_dollar_bars_from_minutes",
+    "compute_volatility_bars_from_minutes",
+    "compute_range_bars_from_minutes",
+    "compute_renko_bars_from_minutes",
+    "compute_hybrid_bars_from_minutes",
+]
+
+
+def _sample_minutes_df(n: int = 60) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "timestamp": [i * 60_000 for i in range(n)],
+            "open": [100.0 + (i % 5) for i in range(n)],
+            "high": [100.5 + (i % 5) for i in range(n)],
+            "low": [99.5 + (i % 5) for i in range(n)],
+            "close": [100.0 + (i % 5) + 0.1 for i in range(n)],
+            "volume": [10.0] * n,
+        }
+    )
+
+
+class TestMinuteRegistry:
+    def test_minute_registry_exact_types(self) -> None:
+        assert flowbars.MinuteBarRegistry.list() == sorted(MINUTE_TYPES)
+
+    def test_minute_types_not_in_tick_registry(self) -> None:
+        tick_registered = set(BarRegistry.list())
+        assert all(name not in tick_registered for name in MINUTE_TYPES)
+
+    def test_minute_registry_has_constructors_and_functions(self) -> None:
+        for name in MINUTE_TYPES:
+            assert isinstance(flowbars.MinuteBarRegistry.get_constructor(name), type)
+            assert callable(flowbars.MinuteBarRegistry.get_batch_function(name))
+
+
+class TestMinuteExports:
+    def test_minute_names_in_all(self) -> None:
+        for name in MINUTE_CONSTRUCTORS + MINUTE_COMPUTE_FUNCTIONS:
+            assert name in flowbars.__all__, f"{name} missing from __all__"
+            assert hasattr(flowbars, name)
+
+    def test_minute_helpers_in_all(self) -> None:
+        for name in (
+            "MinuteBarRegistry",
+            "MinuteCalibrationHelper",
+            "MinuteSchemaMapping",
+            "BaseMinuteBarConstructor",
+        ):
+            assert name in flowbars.__all__, f"{name} missing from __all__"
+
+    @pytest.mark.parametrize(
+        "name,kwargs",
+        [
+            ("MinuteVolumeBarConstructor", {"threshold": 50.0}),
+            ("MinuteDollarBarConstructor", {"threshold": 5_000.0}),
+            ("MinuteImbalanceVolumeBarConstructor", {}),
+            ("MinuteImbalanceDollarBarConstructor", {}),
+            ("MinuteRunVolumeBarConstructor", {}),
+            ("MinuteRunDollarBarConstructor", {}),
+            ("MinuteVolatilityBarConstructor", {"threshold": 0.02}),
+            ("MinuteRangeBarConstructor", {"threshold": 0.02}),
+            ("MinuteRenkoBarConstructor", {"threshold": 0.01}),
+            (
+                "MinuteHybridBarConstructor",
+                {"dollar_threshold": 5_000.0, "volatility_threshold": 0.02},
+            ),
+        ],
+    )
+    def test_minute_constructors_instantiate(self, name: str, kwargs: dict) -> None:
+        ctor = getattr(flowbars, name)(**kwargs)
+        assert callable(ctor.update)
+
+    def test_minute_compute_functions_produce_frames(self) -> None:
+        df = _sample_minutes_df()
+        results = {
+            "compute_volume_bars_from_minutes": (df, 50.0),
+            "compute_dollar_bars_from_minutes": (df, 5_000.0),
+            "compute_volatility_bars_from_minutes": (df, 0.02),
+            "compute_range_bars_from_minutes": (df, 0.02),
+            "compute_renko_bars_from_minutes": (df, 0.01),
+        }
+        for name, args in results.items():
+            out = getattr(flowbars, name)(*args)
+            assert isinstance(out, pd.DataFrame)
+            assert list(out.columns) == [
+                "bar_id",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "dollar_value",
+                "vwap",
+                "num_ticks",
+                "open_ts",
+                "close_ts",
+                "bar_type",
+            ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tick-path signature parity (warmup_bars / backend / stream_id / callbacks)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+TICK_CONSTRUCTOR_KWARGS = [
+    ("TickBarConstructor", {"threshold": 5}),
+    ("TimeBarConstructor", {"interval_ms": 30_000}),
+    ("VolumeBarConstructor", {"threshold": 20.0}),
+    ("DollarBarConstructor", {"threshold": 2_000.0}),
+    ("ImbalanceTickBarConstructor", {"initial_ewa_t": 10.0, "initial_ewa_proportion": 0.5}),
+    ("ImbalanceVolumeBarConstructor", {"initial_ewa_t": 20.0, "initial_ewa_proportion": 0.5}),
+    (
+        "ImbalanceDollarBarConstructor",
+        {"initial_ewa_t": 2_000.0, "initial_ewa_proportion": 0.5},
+    ),
+    ("RunTickBarConstructor", {"initial_ewa_t": 10.0, "initial_ewa_proportion": 0.5}),
+    ("RunVolumeBarConstructor", {"initial_ewa_t": 20.0, "initial_ewa_proportion": 0.5}),
+    ("RunDollarBarConstructor", {"initial_ewa_t": 2_000.0, "initial_ewa_proportion": 0.5}),
+]
+
+
+def _tick_df(n: int = 200) -> pd.DataFrame:
+    """Deterministic tick frame with a side column for information bars."""
+    return pd.DataFrame(
+        {
+            "timestamp": [i * 1_000 for i in range(n)],
+            "price": [100.0 + (i % 7) * 0.1 for i in range(n)],
+            "volume": [1.0 + (i % 5) for i in range(n)],
+            "side": [1.0 if i % 3 else -1.0 for i in range(n)],
+        }
+    )
+
+
+class TestTickSignatureParity:
+    @pytest.mark.parametrize("name,kwargs", TICK_CONSTRUCTOR_KWARGS)
+    def test_accepts_warmup_and_backend(self, name: str, kwargs: dict) -> None:
+        for backend in ("python", "numba"):
+            ctor = getattr(flowbars, name)(**kwargs, warmup_bars=2, backend=backend)
+            assert ctor._warmup_bars == 2
+            assert ctor._backend == backend
+
+    def test_invalid_backend_raises(self) -> None:
+        with pytest.raises(ValueError, match="backend"):
+            flowbars.VolumeBarConstructor(100.0, backend="rust")
+
+    def test_warmup_ids_and_callbacks_standard(self) -> None:
+        seen: list[int] = []
+        ctor = flowbars.VolumeBarConstructor(
+            10.0, warmup_bars=2, on_bar=lambda bar: seen.append(bar.bar_id)
+        )
+        bars = ctor.batch(_tick_df(100))
+        assert bars["bar_id"].tolist() == list(range(2, len(bars) + 2))
+        assert seen == list(range(len(bars) + 2))
+
+    def test_compute_function_forwards_new_kwargs(self) -> None:
+        seen: list[int] = []
+        df = _tick_df(100)
+        out = flowbars.compute_volume_bars(
+            df,
+            10.0,
+            warmup_bars=1,
+            backend="python",
+            stream_id="s1",
+            on_bar=lambda bar: seen.append(bar.bar_id),
+        )
+        assert out["bar_id"].tolist() == list(range(1, len(out) + 1))
+        assert seen == list(range(len(out) + 1))
+
+    @pytest.mark.skipif(not _NUMBA_AVAILABLE, reason="numba not installed")
+    @pytest.mark.parametrize("name,kwargs", TICK_CONSTRUCTOR_KWARGS)
+    def test_python_numba_parity(self, name: str, kwargs: dict) -> None:
+        df = _tick_df()
+        py = getattr(flowbars, name)(**kwargs, backend="python").batch(df)
+        nb = getattr(flowbars, name)(**kwargs, backend="numba").batch(df)
+        assert len(py) > 0
+        pd.testing.assert_frame_equal(py.reset_index(drop=True), nb.reset_index(drop=True))
+
+    @pytest.mark.skipif(not _NUMBA_AVAILABLE, reason="numba not installed")
+    def test_numba_warmup_parity(self) -> None:
+        df = _tick_df()
+        py_seen: list[int] = []
+        nb_seen: list[int] = []
+        py = flowbars.TickBarConstructor(
+            10, warmup_bars=2, on_bar=lambda bar: py_seen.append(bar.bar_id)
+        ).batch(df)
+        nb = flowbars.TickBarConstructor(
+            10,
+            warmup_bars=2,
+            backend="numba",
+            on_bar=lambda bar: nb_seen.append(bar.bar_id),
+        ).batch(df)
+        pd.testing.assert_frame_equal(py.reset_index(drop=True), nb.reset_index(drop=True))
+        assert py["bar_id"].tolist() == list(range(2, len(py) + 2))
+        assert nb_seen == py_seen == list(range(len(py) + 2))

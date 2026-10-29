@@ -37,6 +37,7 @@ class MinuteInfo:
     close: float
     volume: float
     side: float | None = None  # +1.0, −1.0, or None if not derived (first minute)
+    watermark: int | None = None  # optional monotonic dedup key; None → use timestamp
 
 
 @dataclass

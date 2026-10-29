@@ -265,13 +265,15 @@ class TestMinuteEndToEnd:
     def test_bar_type_labels(self) -> None:
         df = self._minutes()
         assert set(compute_volume_bars_from_minutes(df, 5, MINUTE_SCHEMA)["bar_type"]) == {"volume"}
-        assert set(compute_dollar_bars_from_minutes(df, 1000, MINUTE_SCHEMA)["bar_type"]) == {"dollar"}
-        assert set(compute_imbalance_volume_bars_from_minutes(df, schema=MINUTE_SCHEMA)["bar_type"]) == {
-            "imbalance_volume"
+        assert set(compute_dollar_bars_from_minutes(df, 1000, MINUTE_SCHEMA)["bar_type"]) == {
+            "dollar"
         }
-        assert set(compute_imbalance_dollar_bars_from_minutes(df, schema=MINUTE_SCHEMA)["bar_type"]) == {
-            "imbalance_dollar"
-        }
+        assert set(
+            compute_imbalance_volume_bars_from_minutes(df, schema=MINUTE_SCHEMA)["bar_type"]
+        ) == {"imbalance_volume"}
+        assert set(
+            compute_imbalance_dollar_bars_from_minutes(df, schema=MINUTE_SCHEMA)["bar_type"]
+        ) == {"imbalance_dollar"}
         assert set(compute_run_volume_bars_from_minutes(df, schema=MINUTE_SCHEMA)["bar_type"]) == {
             "run_volume"
         }
@@ -294,7 +296,9 @@ class TestMinuteEndToEnd:
 class TestMinuteSchema:
     def test_missing_required_key_raises(self) -> None:
         with pytest.raises(SchemaError, match="Missing required schema keys"):
-            MinuteSchemaMapping({"timestamp": "ts", "open": "o", "high": "h", "low": "l", "close": "c"})
+            MinuteSchemaMapping(
+                {"timestamp": "ts", "open": "o", "high": "h", "low": "l", "close": "c"}
+            )
 
     def test_unknown_key_raises(self) -> None:
         with pytest.raises(SchemaError, match="Unknown schema keys"):

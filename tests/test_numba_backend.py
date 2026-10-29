@@ -867,9 +867,7 @@ class TestNumbaEdgeCases:
 
         acc = TickAccumulator()
         est = StaticThresholdEstimator(threshold=5.0)
-        ctor = BaseBarConstructor(
-            acc, est, schema=default_schema(), backend="numba", warmup_bars=2
-        )
+        ctor = BaseBarConstructor(acc, est, schema=default_schema(), backend="numba", warmup_bars=2)
         result = ctor.batch(df)
 
         assert ctor.bars_emitted == 10  # all 10 bars closed

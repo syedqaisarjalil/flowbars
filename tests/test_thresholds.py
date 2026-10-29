@@ -600,3 +600,38 @@ class TestStaticCalibrationHelper:
         )
         assert seeds["initial_ewa_t"] > 0
         assert seeds["initial_ewa_proportion"] is not None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tick calibration — UTC day normalization
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestTickDayNormalization:
+    DAY_MS = 86_400_000
+
+    def _two_identical_days(self) -> list[TickInfo]:
+        day = [tick(i * 1000, 100.0, 10.0) for i in range(100)]
+        return day + [tick(t.timestamp + self.DAY_MS, t.price, t.volume) for t in day]
+
+    @pytest.mark.parametrize("bar_type", ["tick", "volume", "dollar"])
+    def test_two_days_same_per_day_threshold(self, bar_type: str) -> None:
+        """Doubling both the data and the observed days leaves the threshold alone."""
+        day = [tick(i * 1000, 100.0, 10.0) for i in range(100)]
+        single = StaticCalibrationHelper.estimate_fixed_threshold(day, bar_type, 10.0)
+        doubled = StaticCalibrationHelper.estimate_fixed_threshold(
+            self._two_identical_days(), bar_type, 10.0
+        )
+        assert doubled == pytest.approx(single)
+
+    def test_single_day_per_day_target_is_honored(self) -> None:
+        day = [tick(i * 1000, 100.0, 1.0) for i in range(100)]
+        # 100 ticks over one day, 10 bars/day → 10 ticks per bar.
+        assert StaticCalibrationHelper.estimate_fixed_threshold(day, "tick", 10.0) == pytest.approx(
+            10.0
+        )
+        # Over two days, 10 bars/day → 200 total ticks → 10 per bar again.
+        two_days = day + [tick(t.timestamp + self.DAY_MS, 100.0, 1.0) for t in day]
+        assert StaticCalibrationHelper.estimate_fixed_threshold(
+            two_days, "tick", 10.0
+        ) == pytest.approx(10.0)

@@ -13,7 +13,7 @@ Batch-only — no streaming equivalent for polars.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl  # type: ignore
 
@@ -37,6 +37,36 @@ from flowbars.bars.information import (
 from flowbars.bars.information import (
     compute_run_volume_bars as _pd_compute_run_volume_bars,
 )
+from flowbars.bars.minute import (
+    compute_dollar_bars_from_minutes as _pd_compute_dollar_bars_from_minutes,
+)
+from flowbars.bars.minute import (
+    compute_hybrid_bars_from_minutes as _pd_compute_hybrid_bars_from_minutes,
+)
+from flowbars.bars.minute import (
+    compute_imbalance_dollar_bars_from_minutes as _pd_compute_imbalance_dollar_bars_from_minutes,
+)
+from flowbars.bars.minute import (
+    compute_imbalance_volume_bars_from_minutes as _pd_compute_imbalance_volume_bars_from_minutes,
+)
+from flowbars.bars.minute import (
+    compute_range_bars_from_minutes as _pd_compute_range_bars_from_minutes,
+)
+from flowbars.bars.minute import (
+    compute_renko_bars_from_minutes as _pd_compute_renko_bars_from_minutes,
+)
+from flowbars.bars.minute import (
+    compute_run_dollar_bars_from_minutes as _pd_compute_run_dollar_bars_from_minutes,
+)
+from flowbars.bars.minute import (
+    compute_run_volume_bars_from_minutes as _pd_compute_run_volume_bars_from_minutes,
+)
+from flowbars.bars.minute import (
+    compute_volatility_bars_from_minutes as _pd_compute_volatility_bars_from_minutes,
+)
+from flowbars.bars.minute import (
+    compute_volume_bars_from_minutes as _pd_compute_volume_bars_from_minutes,
+)
 from flowbars.bars.standard import (
     compute_dollar_bars as _pd_compute_dollar_bars,
 )
@@ -50,22 +80,32 @@ from flowbars.bars.standard import (
     compute_volume_bars as _pd_compute_volume_bars,
 )
 from flowbars.calendars import TradingCalendar
-from flowbars.schema import SchemaMapping
+from flowbars.schema import MinuteSchemaMapping, SchemaMapping
 
 if TYPE_CHECKING:
     pass
 
 __all__ = [
     "compute_dollar_bars",
+    "compute_dollar_bars_from_minutes",
+    "compute_hybrid_bars_from_minutes",
     "compute_imbalance_dollar_bars",
+    "compute_imbalance_dollar_bars_from_minutes",
     "compute_imbalance_tick_bars",
     "compute_imbalance_volume_bars",
+    "compute_imbalance_volume_bars_from_minutes",
+    "compute_range_bars_from_minutes",
+    "compute_renko_bars_from_minutes",
     "compute_run_dollar_bars",
+    "compute_run_dollar_bars_from_minutes",
     "compute_run_tick_bars",
     "compute_run_volume_bars",
+    "compute_run_volume_bars_from_minutes",
     "compute_tick_bars",
     "compute_time_bars",
+    "compute_volatility_bars_from_minutes",
     "compute_volume_bars",
+    "compute_volume_bars_from_minutes",
 ]
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -554,3 +594,354 @@ def compute_run_dollar_bars(
         strict_ordering=strict_ordering,
     )
     return pl.from_pandas(pd_bars)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Minute bars
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _minute_call(fn: Any, minutes_df: pl.DataFrame, *args: Any, **kwargs: Any) -> pl.DataFrame:
+    """Convert, delegate to the pandas minute compute function, convert back."""
+    pd_bars = fn(minutes_df.to_pandas(), *args, **kwargs)
+    return cast(pl.DataFrame, pl.from_pandas(pd_bars))
+
+
+def compute_volume_bars_from_minutes(
+    minutes_df: pl.DataFrame,
+    threshold: float,
+    schema: MinuteSchemaMapping | None = None,
+    *,
+    warmup_bars: int = 0,
+    backend: str = "python",
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
+    calendar: TradingCalendar | None = None,
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
+) -> pl.DataFrame:
+    """Build volume bars from a Polars DataFrame of minute OHLCV candles."""
+    return _minute_call(
+        _pd_compute_volume_bars_from_minutes,
+        minutes_df,
+        threshold,
+        schema,
+        warmup_bars=warmup_bars,
+        backend=backend,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
+        calendar=calendar,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
+    )
+
+
+def compute_dollar_bars_from_minutes(
+    minutes_df: pl.DataFrame,
+    threshold: float,
+    schema: MinuteSchemaMapping | None = None,
+    *,
+    warmup_bars: int = 0,
+    backend: str = "python",
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
+    calendar: TradingCalendar | None = None,
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
+) -> pl.DataFrame:
+    """Build dollar bars from a Polars DataFrame of minute OHLCV candles."""
+    return _minute_call(
+        _pd_compute_dollar_bars_from_minutes,
+        minutes_df,
+        threshold,
+        schema,
+        warmup_bars=warmup_bars,
+        backend=backend,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
+        calendar=calendar,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
+    )
+
+
+def compute_imbalance_volume_bars_from_minutes(
+    minutes_df: pl.DataFrame,
+    span: float = 20.0,
+    halflife: float | None = None,
+    initial_ewa_t: float = 1.0,
+    initial_ewa_proportion: float = 0.5,
+    warmup_bars: int = 0,
+    schema: MinuteSchemaMapping | None = None,
+    *,
+    backend: str = "python",
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
+    calendar: TradingCalendar | None = None,
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
+) -> pl.DataFrame:
+    """Build volume-imbalance bars from a Polars DataFrame of minute candles."""
+    return _minute_call(
+        _pd_compute_imbalance_volume_bars_from_minutes,
+        minutes_df,
+        span,
+        halflife,
+        initial_ewa_t,
+        initial_ewa_proportion,
+        warmup_bars,
+        schema,
+        backend=backend,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
+        calendar=calendar,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
+    )
+
+
+def compute_imbalance_dollar_bars_from_minutes(
+    minutes_df: pl.DataFrame,
+    span: float = 20.0,
+    halflife: float | None = None,
+    initial_ewa_t: float = 1.0,
+    initial_ewa_proportion: float = 0.5,
+    warmup_bars: int = 0,
+    schema: MinuteSchemaMapping | None = None,
+    *,
+    backend: str = "python",
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
+    calendar: TradingCalendar | None = None,
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
+) -> pl.DataFrame:
+    """Build dollar-imbalance bars from a Polars DataFrame of minute candles."""
+    return _minute_call(
+        _pd_compute_imbalance_dollar_bars_from_minutes,
+        minutes_df,
+        span,
+        halflife,
+        initial_ewa_t,
+        initial_ewa_proportion,
+        warmup_bars,
+        schema,
+        backend=backend,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
+        calendar=calendar,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
+    )
+
+
+def compute_run_volume_bars_from_minutes(
+    minutes_df: pl.DataFrame,
+    span: float = 20.0,
+    halflife: float | None = None,
+    initial_ewa_t: float = 1.0,
+    initial_ewa_proportion: float = 0.5,
+    warmup_bars: int = 0,
+    min_run_length: int = 0,
+    schema: MinuteSchemaMapping | None = None,
+    *,
+    backend: str = "python",
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
+    calendar: TradingCalendar | None = None,
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
+) -> pl.DataFrame:
+    """Build volume-run bars from a Polars DataFrame of minute candles."""
+    return _minute_call(
+        _pd_compute_run_volume_bars_from_minutes,
+        minutes_df,
+        span,
+        halflife,
+        initial_ewa_t,
+        initial_ewa_proportion,
+        warmup_bars,
+        min_run_length,
+        schema,
+        backend=backend,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
+        calendar=calendar,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
+    )
+
+
+def compute_run_dollar_bars_from_minutes(
+    minutes_df: pl.DataFrame,
+    span: float = 20.0,
+    halflife: float | None = None,
+    initial_ewa_t: float = 1.0,
+    initial_ewa_proportion: float = 0.5,
+    warmup_bars: int = 0,
+    min_run_length: int = 0,
+    schema: MinuteSchemaMapping | None = None,
+    *,
+    backend: str = "python",
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
+    calendar: TradingCalendar | None = None,
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
+) -> pl.DataFrame:
+    """Build dollar-run bars from a Polars DataFrame of minute candles."""
+    return _minute_call(
+        _pd_compute_run_dollar_bars_from_minutes,
+        minutes_df,
+        span,
+        halflife,
+        initial_ewa_t,
+        initial_ewa_proportion,
+        warmup_bars,
+        min_run_length,
+        schema,
+        backend=backend,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
+        calendar=calendar,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
+    )
+
+
+def compute_volatility_bars_from_minutes(
+    minutes_df: pl.DataFrame,
+    threshold: float,
+    schema: MinuteSchemaMapping | None = None,
+    *,
+    warmup_bars: int = 0,
+    backend: str = "python",
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
+    calendar: TradingCalendar | None = None,
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
+) -> pl.DataFrame:
+    """Build volatility bars from a Polars DataFrame of minute candles."""
+    return _minute_call(
+        _pd_compute_volatility_bars_from_minutes,
+        minutes_df,
+        threshold,
+        schema,
+        warmup_bars=warmup_bars,
+        backend=backend,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
+        calendar=calendar,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
+    )
+
+
+def compute_range_bars_from_minutes(
+    minutes_df: pl.DataFrame,
+    threshold: float,
+    schema: MinuteSchemaMapping | None = None,
+    *,
+    warmup_bars: int = 0,
+    backend: str = "python",
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
+    calendar: TradingCalendar | None = None,
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
+) -> pl.DataFrame:
+    """Build relative-range bars from a Polars DataFrame of minute candles."""
+    return _minute_call(
+        _pd_compute_range_bars_from_minutes,
+        minutes_df,
+        threshold,
+        schema,
+        warmup_bars=warmup_bars,
+        backend=backend,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
+        calendar=calendar,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
+    )
+
+
+def compute_renko_bars_from_minutes(
+    minutes_df: pl.DataFrame,
+    threshold: float,
+    schema: MinuteSchemaMapping | None = None,
+    *,
+    warmup_bars: int = 0,
+    backend: str = "python",
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
+    calendar: TradingCalendar | None = None,
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
+) -> pl.DataFrame:
+    """Build renko-displacement bars from a Polars DataFrame of minute candles."""
+    return _minute_call(
+        _pd_compute_renko_bars_from_minutes,
+        minutes_df,
+        threshold,
+        schema,
+        warmup_bars=warmup_bars,
+        backend=backend,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
+        calendar=calendar,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
+    )
+
+
+def compute_hybrid_bars_from_minutes(
+    minutes_df: pl.DataFrame,
+    dollar_threshold: float,
+    volatility_threshold: float,
+    schema: MinuteSchemaMapping | None = None,
+    *,
+    warmup_bars: int = 0,
+    backend: str = "python",
+    watermark: str | None = "timestamp",
+    strict_ordering: bool = False,
+    calendar: TradingCalendar | None = None,
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
+) -> pl.DataFrame:
+    """Build hybrid bars from a Polars DataFrame of minute candles."""
+    return _minute_call(
+        _pd_compute_hybrid_bars_from_minutes,
+        minutes_df,
+        dollar_threshold,
+        volatility_threshold,
+        schema,
+        warmup_bars=warmup_bars,
+        backend=backend,
+        watermark=watermark,
+        strict_ordering=strict_ordering,
+        calendar=calendar,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
+    )

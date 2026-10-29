@@ -6,7 +6,7 @@ is weighted by trade volume instead of tick count.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -44,6 +44,9 @@ class ImbalanceVolumeBarConstructor(BaseBarConstructor):
     strict_ordering : bool, default False
         If True, raise ``TickDataError`` when a tick arrives with a timestamp
         earlier than the previous tick's (out-of-order input).
+    backend : str, default ``"python"``
+        ``"python"`` or ``"numba"``.  The numba backend accelerates
+        :meth:`batch` only; ``update`` always uses Python.
     stream_id : str, default ``"default"``
     on_bar : callable or None
     on_threshold_update : callable or None
@@ -61,6 +64,7 @@ class ImbalanceVolumeBarConstructor(BaseBarConstructor):
         watermark: str | None = "timestamp",
         stream_id: str = "default",
         strict_ordering: bool = False,
+        backend: Literal["python", "numba"] = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
     ) -> None:
@@ -82,6 +86,7 @@ class ImbalanceVolumeBarConstructor(BaseBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
         )
@@ -100,9 +105,7 @@ class ImbalanceVolumeBarConstructor(BaseBarConstructor):
             metric=acc_state["metric"],
         )
         est = EWMAThresholdEstimator.from_state(state["threshold_estimator"])
-        inst: ImbalanceVolumeBarConstructor = BaseBarConstructor.from_state(
-            state, acc, est, calendar, schema
-        )  # type: ignore[assignment]
+        inst: ImbalanceVolumeBarConstructor = super().from_state(state, acc, est, calendar, schema)  # type: ignore[assignment]
         return inst
 
 
@@ -117,6 +120,11 @@ def compute_imbalance_volume_bars(
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    *,
+    backend: Literal["python", "numba"] = "python",
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
 ) -> pd.DataFrame:
     """Build volume-imbalance bars from a DataFrame of ticks.
 
@@ -142,6 +150,11 @@ def compute_imbalance_volume_bars(
         If True, raise ``TickDataError`` when a tick arrives with a timestamp
         earlier than the previous tick's (out-of-order input).
     calendar : TradingCalendar, optional
+    backend : str, default ``"python"``
+        ``"python"`` or ``"numba"``.
+    stream_id : str, default ``"default"``
+    on_bar : callable or None
+    on_threshold_update : callable or None
 
     Returns
     -------
@@ -158,6 +171,10 @@ def compute_imbalance_volume_bars(
         schema=schema,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        backend=backend,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
     )
     return ctor.batch(ticks_df)
 

@@ -882,3 +882,65 @@ class TestEdgeCases:
         bar = ctor.update(tick(weekday_ts(7, 10, 0), 103.0, 1.0))
         assert bar is not None
         assert bar.num_ticks == 3  # all 3 weekend ticks in one bar
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Pending-bar drain (no dropped input)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestPendingDrain:
+    def test_boundary_and_threshold_close_in_one_update(self) -> None:
+        """A single ``update()`` can close two bars; neither input is dropped."""
+        cal = SessionCalendar(9, 30, 16, 0)
+        ctor = BaseBarConstructor(
+            VolumeAccumulator(bar_type="volume"),
+            StaticThresholdEstimator(threshold=5.0),
+            calendar=cal,
+            watermark=None,
+        )
+
+        # Monday 10:00 — inside session, under the threshold.
+        assert ctor.update(tick(weekday_ts(0, 10, 0), 100.0, 4.0)) is None
+
+        # Monday 17:00 — outside session.  Force-closes bar 0 (vol 4) and then
+        # the same tick opens+closes bar 1 (vol 7 ≥ threshold).
+        bar0 = ctor.update(tick(weekday_ts(0, 17, 0), 101.0, 7.0))
+        assert bar0 is not None
+        assert bar0.bar_id == 0
+        assert bar0.num_ticks == 1
+        assert bar0.volume == 4.0
+        assert ctor.bars_emitted == 2
+
+        # The second pending bar is returned by the next update — the 17:00
+        # tick was ingested, not discarded.
+        bar1 = ctor.update(tick(weekday_ts(0, 17, 1), 102.0, 1.0))
+        assert bar1 is not None
+        assert bar1.bar_id == 1
+        assert bar1.num_ticks == 1
+        assert bar1.volume == 7.0
+
+        # The new tick opened a fresh bar.
+        assert ctor.current_bar is not None
+        assert ctor.current_bar.num_ticks == 1
+
+    def test_pending_drained_by_batch(self) -> None:
+        """``batch()`` returns every pending bar in order."""
+        cal = SessionCalendar(9, 30, 16, 0)
+        df = pd.DataFrame(
+            {
+                "timestamp": [weekday_ts(0, 10, 0), weekday_ts(0, 17, 0)],
+                "price": [100.0, 101.0],
+                "volume": [4.0, 7.0],
+            }
+        )
+        ctor = BaseBarConstructor(
+            VolumeAccumulator(bar_type="volume"),
+            StaticThresholdEstimator(threshold=5.0),
+            calendar=cal,
+            watermark=None,
+            schema=SchemaMapping({"timestamp": "timestamp", "price": "price", "volume": "volume"}),
+        )
+        bars = ctor.batch(df)
+        assert list(bars["bar_id"]) == [0, 1]
+        assert list(bars["volume"]) == [4.0, 7.0]

@@ -6,7 +6,7 @@ by notional value (price × volume) instead of tick count.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -49,6 +49,9 @@ class RunDollarBarConstructor(BaseBarConstructor):
     strict_ordering : bool, default False
         If True, raise ``TickDataError`` when a tick arrives with a timestamp
         earlier than the previous tick's (out-of-order input).
+    backend : str, default ``"python"``
+        ``"python"`` or ``"numba"``.  The numba backend accelerates
+        :meth:`batch` only; ``update`` always uses Python.
     stream_id : str, default ``"default"``
     on_bar : callable or None
     on_threshold_update : callable or None
@@ -67,6 +70,7 @@ class RunDollarBarConstructor(BaseBarConstructor):
         watermark: str | None = "timestamp",
         stream_id: str = "default",
         strict_ordering: bool = False,
+        backend: Literal["python", "numba"] = "python",
         on_bar: Any = None,
         on_threshold_update: Any = None,
     ) -> None:
@@ -92,6 +96,7 @@ class RunDollarBarConstructor(BaseBarConstructor):
             stream_id=stream_id,
             strict_ordering=strict_ordering,
             warmup_bars=warmup_bars,
+            backend=backend,
             on_bar=on_bar,
             on_threshold_update=on_threshold_update,
         )
@@ -99,6 +104,12 @@ class RunDollarBarConstructor(BaseBarConstructor):
     def _should_return(self, bar: Bar) -> bool:
         """Filter bars below ``min_run_length`` ticks."""
         return bar.num_ticks >= self._min_run_length
+
+    def _extra_state(self) -> dict[str, Any]:
+        return {"min_run_length": self._min_run_length}
+
+    def _load_extra_state(self, state: dict[str, Any]) -> None:
+        self._min_run_length = int(state.get("min_run_length", 0))
 
     @classmethod
     def from_state(  # type: ignore[override]
@@ -114,9 +125,7 @@ class RunDollarBarConstructor(BaseBarConstructor):
             metric=acc_state["metric"],
         )
         est = EWMAThresholdEstimator.from_state(state["threshold_estimator"])
-        inst: RunDollarBarConstructor = BaseBarConstructor.from_state(
-            state, acc, est, calendar, schema
-        )  # type: ignore[assignment]
+        inst: RunDollarBarConstructor = super().from_state(state, acc, est, calendar, schema)  # type: ignore[assignment]
         return inst
 
 
@@ -132,6 +141,11 @@ def compute_run_dollar_bars(
     watermark: str | None = "timestamp",
     strict_ordering: bool = False,
     calendar: TradingCalendar | None = None,
+    *,
+    backend: Literal["python", "numba"] = "python",
+    stream_id: str = "default",
+    on_bar: Any = None,
+    on_threshold_update: Any = None,
 ) -> pd.DataFrame:
     """Build dollar-run bars from a DataFrame of ticks.
 
@@ -159,6 +173,11 @@ def compute_run_dollar_bars(
         If True, raise ``TickDataError`` when a tick arrives with a timestamp
         earlier than the previous tick's (out-of-order input).
     calendar : TradingCalendar, optional
+    backend : str, default ``"python"``
+        ``"python"`` or ``"numba"``.
+    stream_id : str, default ``"default"``
+    on_bar : callable or None
+    on_threshold_update : callable or None
 
     Returns
     -------
@@ -176,6 +195,10 @@ def compute_run_dollar_bars(
         schema=schema,
         watermark=watermark,
         strict_ordering=strict_ordering,
+        backend=backend,
+        stream_id=stream_id,
+        on_bar=on_bar,
+        on_threshold_update=on_threshold_update,
     )
     return ctor.batch(ticks_df)
 

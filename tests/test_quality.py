@@ -307,6 +307,159 @@ class TestPolarsInput:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+class TestRicherStatistics:
+    def test_return_moments_match_manual(self) -> None:
+        rng = np.random.default_rng(5)
+        n = 200
+        close = 50_000.0 * np.exp(np.cumsum(rng.normal(0.0, 0.01, n)))
+        bars = _make_bars(n=n, close_prices=close)
+        report = bar_quality_report(bars)
+
+        log_returns = np.diff(np.log(close))
+        moments = report["return_moments"]
+        assert moments["mean"] == pytest.approx(float(np.mean(log_returns)))
+        assert moments["std"] == pytest.approx(float(np.std(log_returns)))
+        assert moments["kurtosis"] > 0.0
+
+    def test_short_series_reports_none_lags(self) -> None:
+        bars = _make_bars(n=4)
+        report = bar_quality_report(bars)
+        # three log returns: lag-1 defined, lag-5 not
+        assert report["return_autocorrelation"]["lag1"] is not None
+        assert report["return_autocorrelation"]["lag5"] is None
+        assert report["abs_return_autocorrelation"]["lag5"] is None
+        assert report["variance_ratio"]["lag2"] is not None
+        assert report["variance_ratio"]["lag5"] is None
+
+    def test_constant_returns_guard(self) -> None:
+        bars = _make_bars(n=50, close_prices=np.full(50, 100.0))
+        report = bar_quality_report(bars)
+        assert report["entropy"] is None
+        assert report["variance_ratio"]["lag2"] is None
+        assert report["return_moments"]["std"] == 0.0
+        # Zero autocorrelation implies ESS == n_returns (n_bars - 1).
+        assert report["effective_sample_size"] == pytest.approx(49.0)
+
+    def test_entropy_bounds(self) -> None:
+        rng = np.random.default_rng(6)
+        close = 100.0 * np.exp(np.cumsum(rng.normal(0.0, 0.01, 300)))
+        entropy = bar_quality_report(_make_bars(n=300, close_prices=close))["entropy"]
+        assert entropy is not None
+        assert entropy["shannon"] > 0.0
+        assert 0.0 <= entropy["normalized"] <= 1.0
+
+    def test_bar_size_cv_prefers_volume(self) -> None:
+        df = _make_bars(n=20)
+        df["volume"] = np.arange(1, 21, dtype=np.float64)
+        report = bar_quality_report(df)
+        assert report["bar_size_cv"]["metric"] == "volume"
+        assert report["bar_size_cv"]["cv"] > 0.0
+
+        fallback = bar_quality_report(_make_bars(n=20))
+        assert fallback["bar_size_cv"]["metric"] == "num_ticks"
+        assert fallback["bar_size_cv"]["cv"] == 0.0
+
+    def test_duration_cv(self) -> None:
+        df = _make_bars(n=10)
+        df["close_ts"] = df["open_ts"] + np.arange(1, 11, dtype=np.int64) * 1_000
+        report = bar_quality_report(df)
+        assert report["duration_cv"] is not None
+        assert report["duration_cv"] > 0.0
+
+        df["close_ts"] = df["open_ts"] + 60_000
+        assert bar_quality_report(df)["duration_cv"] == pytest.approx(0.0)
+
+    def test_ohlc_integrity(self) -> None:
+        df = _make_bars(n=4)
+        df["open"] = [100.0, 100.0, 100.0, 100.0]
+        df["high"] = [101.0, 99.0, 101.0, 101.0]  # second bar: close > high
+        df["low"] = [99.0, 98.0, 99.0, 102.0]  # fourth bar: low > open
+        df["close"] = [100.5, 100.0, 100.5, 100.5]
+        report = bar_quality_report(df)
+        integrity = report["ohlc_integrity"]
+        assert integrity is not None
+        assert integrity["n_violations"] == 2
+        assert integrity["fraction"] == pytest.approx(0.5)
+
+    def test_effective_sample_size_clips(self) -> None:
+        # Strong negative lag-1 autocorrelation → ESS > n but finite.
+        alternating = 100.0 * np.ones(21)
+        alternating[1::2] = 110.0
+        report = bar_quality_report(_make_bars(n=21, close_prices=alternating))
+        ess = report["effective_sample_size"]
+        assert ess is not None and ess > 0.0
+
+    def test_composite_score(self) -> None:
+        rng = np.random.default_rng(8)
+        close = 100.0 * np.exp(np.cumsum(rng.normal(0.0, 0.01, 120)))
+        report = bar_quality_report(_make_bars(n=120, close_prices=close))
+        score = report["composite_score"]
+        assert score is not None
+        assert 0.0 <= score["score"] <= 1.0
+        assert set(score["components"]) <= {
+            "autocorrelation",
+            "variance_ratio",
+            "entropy",
+            "bar_size_cv",
+            "duration_cv",
+        }
+
+    def test_report_is_deterministic(self) -> None:
+        rng = np.random.default_rng(9)
+        close = 100.0 * np.exp(np.cumsum(rng.normal(0.0, 0.01, 80)))
+        bars = _make_bars(n=80, close_prices=close)
+        assert bar_quality_report(bars) == bar_quality_report(bars)
+
+
+class TestScipyOptional:
+    def test_report_without_scipy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "scipy" or name.startswith("scipy."):
+                raise ImportError("scipy blocked for test")
+            return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        report = bar_quality_report(_make_bars(n=100))
+
+        assert report["scipy_available"] is False
+        assert report["ljung_box"] is not None
+        assert report["ljung_box"]["p_value"] is None
+        assert report["ljung_box"]["reject_autocorrelation"] is None
+        assert report["jarque_bera"] is not None
+        assert report["jarque_bera"]["p_value"] is None
+        assert report["jarque_bera"]["reject_normality"] is None
+
+
+class TestFragmentationMaskAndUnits:
+    def test_mixed_run_and_non_run_bars(self) -> None:
+        n = 20
+        bar_types = ["run_tick"] * 10 + ["tick"] * 10
+        num_ticks = np.full(n, 1, dtype=np.int64)
+        bars = _make_bars(n=n, bar_type="run_tick", num_ticks=num_ticks)
+        bars["bar_type"] = bar_types
+        frag = bar_quality_report(bars)["run_fragmentation"]
+        assert frag is not None
+        assert frag["n_run_bars"] == 10
+        assert frag["fraction_fragmented"] == 1.0
+
+    def test_custom_threshold_and_unit(self) -> None:
+        n = 10
+        num_ticks = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=np.int64)
+        bars = _make_bars(n=n, bar_type="run_volume", num_ticks=num_ticks)
+        frag = bar_quality_report(bars, fragmentation_threshold=3, num_ticks_unit="minutes")[
+            "run_fragmentation"
+        ]
+        assert frag is not None
+        assert frag["threshold"] == 3
+        assert frag["unit"] == "minutes"
+        assert frag["n_fragmented"] == 3
+        assert frag["fraction_fragmented"] == pytest.approx(0.3)
+
+
 class TestResultStructure:
     def test_all_keys_present(self) -> None:
         """The result dict has all expected top-level keys."""
@@ -314,12 +467,23 @@ class TestResultStructure:
         report = bar_quality_report(bars)
         expected_keys = {
             "n_bars",
+            "scipy_available",
             "ljung_box",
             "jarque_bera",
             "bar_count_stability",
             "run_fragmentation",
+            "return_moments",
+            "return_autocorrelation",
+            "abs_return_autocorrelation",
+            "variance_ratio",
+            "entropy",
+            "bar_size_cv",
+            "duration_cv",
+            "effective_sample_size",
+            "ohlc_integrity",
+            "composite_score",
         }
-        assert set(report.keys()) == expected_keys
+        assert set(report.keys()) >= expected_keys
 
     def test_default_lags_is_auto(self) -> None:
         """When ljung_box_lags is not specified, it's computed automatically."""

@@ -129,14 +129,30 @@ auto-detection, no magic. If a required column is missing, you get a clear
 
 ### Bar quality diagnostics
 
-`bar_quality_report()` provides honest, standard statistical tests:
+`bar_quality_report()` provides honest, standard statistical tests.  `scipy`
+is optional — without it the Ljung-Box / Jarque-Bera statistics are still
+computed (in numpy) but their p-values and reject flags are `None`.
 
 | Diagnostic | Test | What it flags |
 |---|---|---|
 | Autocorrelation | Ljung-Box | Serially-correlated returns |
 | Normality | Jarque-Bera | Non-normal return distribution |
 | Stability | CV of per-day bar counts | Uneven sampling rate |
-| Fragmentation | Fraction of run-bars ≤ 2 ticks | Over-fragmented run bars |
+| Fragmentation | Fraction of run-bars ≤ 2 ticks/minutes | Over-fragmented run bars |
+| Return moments | mean, std, skewness, kurtosis | Distribution shape |
+| Return ACF | lag-1, lag-5 (raw and `\|r\|`) | Serial dependence, volatility clustering |
+| Variance ratio | lag-2, lag-5 | Random-walk departure |
+| Entropy | Histogram Shannon entropy | Information content (normalized) |
+| Bar-size CV | CV of volume (or `num_ticks`) | Uneven bar sizes |
+| Duration CV | CV of `close_ts − open_ts` | Uneven bar durations |
+| Effective sample size | `n·(1−ρ₁)/(1+ρ₁)` | Overstated sample size from autocorrelation |
+| OHLC integrity | Violations of `low ≤ open, close ≤ high` | Malformed bars |
+| Composite score | Mean of available sub-scores | One-number quality summary |
+
+All metrics are deterministic (fixed lag set, fixed histogram rule, no RNG).
+For minute bars pass `num_ticks_unit="minutes"`; the run-fragmentation
+threshold is configurable with `fragmentation_threshold=`.  Run fragmentation
+is masked to `run_*` bar types, so mixed frames report correctly.
 
 ## Bar types
 
@@ -176,6 +192,61 @@ from flowbars import (
     compute_run_dollar_bars,
 )
 ```
+
+Every tick constructor and `compute_*_bars` function accepts `warmup_bars`,
+`backend`, `stream_id`, and the `on_bar` / `on_threshold_update` callbacks,
+matching the minute path's signature surface.
+
+## Minute-OHLCV path
+
+Non-time bars can also be built from **minute OHLCV candles** instead of raw
+ticks.  The minute path has full mode parity with the tick path — streaming
+`update()`, state save/resume, callbacks, `warmup_bars`, watermark dedup,
+`strict_ordering`, calendars, the numba batch backend, and the polars adapter —
+and produces the identical 12-column output schema.  `num_ticks` counts
+**minutes**, and `dollar_value` / `vwap` use `close × volume` as the notional
+proxy.
+
+| Minute type | Closes when… | Function |
+|---|---|---|
+| volume | `Σ volume ≥ threshold` | `compute_volume_bars_from_minutes` |
+| dollar | `Σ close×volume ≥ threshold` | `compute_dollar_bars_from_minutes` |
+| imbalance_volume | \|Σ sign×volume\| ≥ EWMA T | `compute_imbalance_volume_bars_from_minutes` |
+| imbalance_dollar | \|Σ sign×close×volume\| ≥ EWMA T | `compute_imbalance_dollar_bars_from_minutes` |
+| run_volume | same-sign volume run ≥ EWMA T | `compute_run_volume_bars_from_minutes` |
+| run_dollar | same-sign dollar run ≥ EWMA T | `compute_run_dollar_bars_from_minutes` |
+| volatility | `Σ \|closeₜ−closeₜ₋₁\|/closeₜ₋₁ ≥ threshold` | `compute_volatility_bars_from_minutes` |
+| range | `Σ (high−low)/close ≥ threshold` | `compute_range_bars_from_minutes` |
+| renko | `\|close−anchor\|/anchor ≥ threshold` (anchor = first open) | `compute_renko_bars_from_minutes` |
+| hybrid | both `Σ close×volume` and volatility targets met | `compute_hybrid_bars_from_minutes` |
+
+The four structural types (volatility, range, renko, hybrid) are minute-only
+and use **static** thresholds.  Renko displacement is not additive, so its
+anchor resets on every close with no overflow; the other three roll their
+scalar excess into the next bar.  Volatility and hybrid reset `prev_close` at
+session boundaries so an overnight gap contributes no fake return.
+
+### Calibrate thresholds from minute data
+
+`MinuteCalibrationHelper` is deterministic (no RNG, fixed bisection
+iterations): repeated calls on the same input return identical values.  Targets
+are bars **per UTC day**, scaled by the number of observed UTC days.
+
+```python
+from flowbars import MinuteCalibrationHelper
+
+vol_threshold = MinuteCalibrationHelper.estimate_volume_threshold(minutes, 50.0)
+renko_threshold = MinuteCalibrationHelper.estimate_renko_threshold(minutes, 50.0)
+dollar_t, variance_t = MinuteCalibrationHelper.estimate_hybrid_thresholds(
+    minutes, 50.0, volatility_threshold=0.01
+)
+seeds = MinuteCalibrationHelper.estimate_ewma_seeds(
+    minutes, "run", metric="dollar", span=20.0, target_bars=50
+)
+```
+
+Minute bars work with the polars adapter too:
+`from flowbars.adapters.polars import compute_volume_bars_from_minutes`.
 
 ## Install
 
@@ -242,18 +313,19 @@ bars = compute_imbalance_tick_bars(
 ### Use the numba backend
 
 ```python
-from flowbars.bars.constructor import BaseBarConstructor
-from flowbars.bars.accumulators import TickAccumulator
-from flowbars.thresholds import StaticThresholdEstimator
+from flowbars import VolumeBarConstructor
 
-ctor = BaseBarConstructor(
-    accumulator=TickAccumulator(bar_type="tick"),
-    threshold_estimator=StaticThresholdEstimator(threshold=100),
+ctor = VolumeBarConstructor(
+    5_000.0,
     schema=schema,
     backend="numba",  # flip this one switch
 )
 bars = ctor.batch(ticks_df)
 ```
+
+All ten tick constructors and all ten `compute_*_bars` functions accept
+`backend="numba"`; minute constructors take the same argument.  The Python
+backend remains the default, and `update()` always runs in Python.
 
 ### Polars adapter
 
@@ -352,6 +424,9 @@ the free, drop-in proxy.
 | `compute_run_dollar_bars(df, ...)` | DataFrame | Dollar-run bars |
 | `load_sample_data()` | DataFrame | Bundled 500-tick sample |
 | `bar_quality_report(bars)` | dict | Statistical diagnostics |
+
+All `compute_*_bars` functions also accept keyword-only `warmup_bars`,
+`backend`, `stream_id`, `on_bar`, and `on_threshold_update`.
 
 ### Core classes
 

@@ -56,7 +56,7 @@ from flowbars.bars.standard import (
     compute_volume_bars as pd_compute_volume_bars,
 )
 from flowbars.calendars import ContinuousCalendar
-from flowbars.schema import SchemaMapping
+from flowbars.schema import MinuteSchemaMapping, SchemaMapping
 from flowbars.tick_rule import resolve_tick_signs
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -415,3 +415,120 @@ class TestPolarsEdgeCases:
         assert _bars_equal(pd_result, pl_result.to_pandas())
         # Ensure we actually produced bars
         assert len(pd_result) > 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Minute bars
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _make_minute_data(n: int = 240, seed: int = 11) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    closes = 100.0 * np.exp(np.cumsum(rng.normal(0.0, 0.003, n)))
+    opens = np.concatenate([[closes[0]], closes[:-1]])
+    return pd.DataFrame(
+        {
+            "ts": np.arange(n, dtype=np.int64) * 60_000,
+            "open": opens,
+            "high": np.maximum(opens, closes) * 1.001,
+            "low": np.minimum(opens, closes) * 0.999,
+            "close": closes,
+            "volume": rng.integers(1, 31, n).astype(np.float64),
+        }
+    )
+
+
+def _minute_schema() -> MinuteSchemaMapping:
+    return MinuteSchemaMapping(
+        {
+            "timestamp": "ts",
+            "open": "open",
+            "high": "high",
+            "low": "low",
+            "close": "close",
+            "volume": "volume",
+        }
+    )
+
+
+class TestPolarsMinuteBars:
+    """Every minute mirror must match the pandas compute function exactly."""
+
+    @pytest.mark.parametrize("kind", ["volume", "dollar"])
+    def test_standard_minute_equivalence(self, kind: str) -> None:
+        from flowbars.adapters import polars as pl_adapter
+        from flowbars.bars.minute import standard as pd_standard
+
+        if kind == "volume":
+            pd_fn = pd_standard.compute_volume_bars_from_minutes
+            pl_fn = pl_adapter.compute_volume_bars_from_minutes
+            threshold = 60.0
+        else:
+            pd_fn = pd_standard.compute_dollar_bars_from_minutes
+            pl_fn = pl_adapter.compute_dollar_bars_from_minutes
+            threshold = 6_000.0
+
+        df = _make_minute_data()
+        schema = _minute_schema()
+        pd_bars = pd_fn(df, threshold, schema)
+        pl_bars = pl_fn(pl.from_pandas(df), threshold, schema)
+        assert isinstance(pl_bars, pl.DataFrame)
+        assert _bars_equal(pd_bars, pl_bars.to_pandas())
+        assert len(pd_bars) > 0
+
+    @pytest.mark.parametrize(
+        "kind",
+        ["imbalance_volume", "imbalance_dollar", "run_volume", "run_dollar"],
+    )
+    def test_information_minute_equivalence(self, kind: str) -> None:
+        from flowbars.adapters import polars as pl_adapter
+        from flowbars.bars.minute import information as pd_info
+
+        kwargs = {
+            "span": 10.0,
+            "initial_ewa_t": 100.0 if kind == "imbalance_volume" else 1_000.0,
+            "initial_ewa_proportion": 0.5,
+        }
+        if kind.startswith("run_"):
+            kwargs["min_run_length"] = 2
+        pd_fn = getattr(pd_info, f"compute_{kind}_bars_from_minutes")
+        pl_fn = getattr(pl_adapter, f"compute_{kind}_bars_from_minutes")
+
+        df = _make_minute_data()
+        schema = _minute_schema()
+        pd_bars = pd_fn(df, schema=schema, **kwargs)
+        pl_bars = pl_fn(pl.from_pandas(df), schema=schema, **kwargs)
+        assert isinstance(pl_bars, pl.DataFrame)
+        assert _bars_equal(pd_bars, pl_bars.to_pandas())
+        assert len(pd_bars) > 0
+
+    @pytest.mark.parametrize("kind", ["volatility", "range", "renko"])
+    def test_structural_minute_equivalence(self, kind: str) -> None:
+        from flowbars.adapters import polars as pl_adapter
+        from flowbars.bars.minute import structural as pd_structural
+
+        threshold = {"volatility": 0.02, "range": 0.02, "renko": 0.01}[kind]
+        pd_fn = getattr(pd_structural, f"compute_{kind}_bars_from_minutes")
+        pl_fn = getattr(pl_adapter, f"compute_{kind}_bars_from_minutes")
+
+        df = _make_minute_data()
+        schema = _minute_schema()
+        pd_bars = pd_fn(df, threshold, schema)
+        pl_bars = pl_fn(pl.from_pandas(df), threshold, schema)
+        assert isinstance(pl_bars, pl.DataFrame)
+        assert _bars_equal(pd_bars, pl_bars.to_pandas())
+        assert len(pd_bars) > 0
+
+    def test_hybrid_minute_equivalence(self) -> None:
+        from flowbars.adapters import polars as pl_adapter
+        from flowbars.bars.minute import structural as pd_structural
+
+        df = _make_minute_data()
+        schema = _minute_schema()
+        pd_bars = pd_structural.compute_hybrid_bars_from_minutes(df, 6_000.0, 0.02, schema)
+        pl_bars = pl_adapter.compute_hybrid_bars_from_minutes(
+            pl.from_pandas(df), 6_000.0, 0.02, schema
+        )
+        assert isinstance(pl_bars, pl.DataFrame)
+        assert _bars_equal(pd_bars, pl_bars.to_pandas())
+        assert len(pd_bars) > 0
