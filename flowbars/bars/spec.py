@@ -14,6 +14,7 @@ know the output columns — without hardcoding any bar-type knowledge.
 from __future__ import annotations
 
 import inspect
+import sys
 import types
 import typing
 from dataclasses import dataclass, field, replace
@@ -24,6 +25,11 @@ from flowbars.bars.constructor import (
     _OUTPUT_CONTRACT_VERSION,
     _STATE_SCHEMA_VERSION,
 )
+
+# ``types.UnionType`` exists only on Python 3.10+.
+_UNION_ORIGINS: tuple[Any, ...] = (typing.Union,)
+if hasattr(types, "UnionType"):  # pragma: no cover - depends on interpreter
+    _UNION_ORIGINS += (types.UnionType,)
 
 # Parameters every constructor accepts that can be expressed as JSON.
 _COMMON_JSON_PARAMS: dict[str, dict[str, Any]] = {
@@ -156,7 +162,7 @@ def _schema_for_annotation(annotation: Any) -> dict[str, Any]:
     origin = typing.get_origin(annotation)
     args = typing.get_args(annotation)
 
-    if origin in (typing.Union, types.UnionType):
+    if origin in _UNION_ORIGINS:
         non_none = [a for a in args if a is not type(None)]
         if len(non_none) == 1:
             inner = _schema_for_annotation(non_none[0])
@@ -183,14 +189,41 @@ def _init_function(constructor_cls: type) -> Any:
     return object.__init__  # pragma: no cover - every class has one
 
 
+def _resolve_annotation(annotation: Any, init_fn: Any) -> Any:
+    """Resolve a string annotation, tolerating PEP 604 syntax on Python 3.9.
+
+    ``typing.get_type_hints`` raises on 3.9 for any ``X | Y`` annotation, which
+    would silently drop every parameter schema.  Resolve one annotation at a
+    time instead, falling back to a manual union split.
+    """
+    if not isinstance(annotation, str):
+        return annotation
+
+    module = sys.modules.get(getattr(init_fn, "__module__", ""))
+    globalns = vars(module) if module is not None else {}
+    try:
+        return eval(annotation, globalns)  # noqa: S307 - annotation source text
+    except Exception:
+        pass
+
+    parts = [part.strip() for part in annotation.split("|")]
+    if len(parts) < 2:
+        return annotation
+    resolved: list[Any] = []
+    for part in parts:
+        if part == "None":
+            resolved.append(type(None))
+            continue
+        try:
+            resolved.append(eval(part, globalns))  # noqa: S307
+        except Exception:
+            return annotation
+    return typing.Union[tuple(resolved)]
+
+
 def _constructor_params_schema(constructor_cls: type) -> dict[str, Any]:
     """Build a JSON Schema for the JSON-safe constructor parameters."""
     init_fn = _init_function(constructor_cls)
-    try:
-        hints = typing.get_type_hints(init_fn)
-    except Exception:  # pragma: no cover - exotic annotations
-        hints = {}
-
     signature = inspect.signature(init_fn)
     properties: dict[str, Any] = {}
     required: list[str] = []
@@ -198,7 +231,7 @@ def _constructor_params_schema(constructor_cls: type) -> dict[str, Any]:
     for name, param in signature.parameters.items():
         if name in _NON_JSON_PARAMS:
             continue
-        schema = _schema_for_annotation(hints.get(name, param.annotation))
+        schema = _schema_for_annotation(_resolve_annotation(param.annotation, init_fn))
         if name in _COMMON_JSON_PARAMS:
             properties[name] = dict(_COMMON_JSON_PARAMS[name])
             continue

@@ -423,16 +423,12 @@ class TestMetadata:
 def _tick_infos(df: pd.DataFrame, sided: bool = False) -> list[TickInfo]:
     return [
         TickInfo(
-            timestamp=int(ts),
-            price=float(px),
-            volume=float(vol),
+            timestamp=int(row["ts"]),
+            price=float(row["px"]),
+            volume=float(row["vol"]),
             side=float(row["side"]) if sided else None,
         )
-        for (ts, px, vol), row in zip(
-            zip(df["ts"], df["px"], df["vol"]),
-            df.to_dict("records"),
-            strict=True,
-        )
+        for row in df.to_dict("records")
     ]
 
 
