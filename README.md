@@ -102,6 +102,22 @@ whatever the calendar reports) the in-progress bar is handled per
 | `"discard"` | Drop the in-progress bar silently (no callback, no overflow carried) |
 | `"carry"` | Keep the bar open across the boundary (opt-in); the gap adds no return |
 
+Session-only feeds (equity/FX data that never prints outside the trading day)
+are handled too: the engine compares each in-session input against the
+calendar's next session open, so the first input of a later session
+force-closes the hanging bar at the **prior session's close** (`partial=True`,
+`close_ts` = last session end) instead of letting one bar span the weekend or a
+holiday.  Minute volatility/hybrid bars exclude the gap return, and the minute
+tick rule derives no sign across the gap.
+
+When a stream simply ends mid-session (no later input to reveal the gap), call
+`flush()` to emit the open bar as a `partial` bar:
+
+```python
+bar = ctor.flush()          # close_ts = calendar session end of the last input
+bar = ctor.flush(now_ms)    # or an explicit close instant
+```
+
 `session_estimator="persist"` (default) keeps EWMA learning across sessions;
 `"reset"` restores the seeds at each boundary.  Policies are per constructor,
 so different series can choose independently.

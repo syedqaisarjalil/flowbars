@@ -292,39 +292,49 @@ class BaseBarConstructor:
                 f"Out-of-order tick: timestamp {item.timestamp} < previous {self._last_timestamp}"
             )
 
-        # 1. Per-input preparation (minute path derives missing sides here, so
-        #    a deduplicated input never corrupts the sign state)
-        item = self._prepare_input(item)
-        if self._warmup_minutes and self._warmup_start_ts is None:
-            self._warmup_start_ts = item.timestamp
-
-        # 2. Session boundary detection
+        # 1. Session boundary detection.  This runs before input preparation
+        #    because the minute path derives its tick-rule sign there, and a
+        #    session gap must clear the carried price state first.
         is_boundary = self._calendar.is_session_boundary(item.timestamp)
-        # A transition is a boundary->session or session->boundary flip.
-        if is_boundary == self._in_session:
+        session_id = None if is_boundary else self._calendar.session_id(item.timestamp)
+        skipped_gap = self._detect_skipped_gap(item, is_boundary, session_id)
+        # A transition is a boundary->session or session->boundary flip, or a
+        # direct jump from one session into a later one (a feed that never
+        # prints during the gap — see _detect_skipped_gap).
+        if skipped_gap or is_boundary == self._in_session:
             if self._accumulator._has_tick and self._session_policy != "carry":
                 if self._session_policy == "close":
                     # Force-close the in-progress bar as a partial bar.  Its
                     # close_ts is the session boundary, not this input's ts.
-                    self._emit_bar(close_ts=self._session_transition_ts(item, is_boundary))
+                    if skipped_gap:
+                        self._emit_bar(close_ts=self._skipped_gap_close_ts())
+                    else:
+                        self._emit_bar(close_ts=self._session_transition_ts(item, is_boundary))
                 else:  # "discard"
                     self._discard_bar()
             # A session gap never contributes a price return: reset carried
             # price state under every policy (a "carry" bar stays open but
             # skips the gap return).
             self._accumulator.on_session_boundary()
+            self._on_session_boundary()
             if self._session_estimator == "reset":
                 self._threshold_estimator.reset()
-            self._in_session = not is_boundary
+            if not skipped_gap:
+                self._in_session = not is_boundary
+
+        # 2. Per-input preparation (minute path derives missing sides here, so
+        #    a deduplicated input never corrupts the sign state)
+        item = self._prepare_input(item)
+        if self._warmup_minutes and self._warmup_start_ts is None:
+            self._warmup_start_ts = item.timestamp
 
         # 3. Add input to accumulator
         self._ingest_input(item)
         self._last_watermark = wm
         self._last_timestamp = item.timestamp
+        if session_id is not None:
+            self._session_id = session_id
         if not is_boundary:
-            session_id = self._calendar.session_id(item.timestamp)
-            if session_id is not None:
-                self._session_id = session_id
             session_end = self._calendar.session_end(item.timestamp)
             if session_end is not None:
                 self._last_session_end = session_end
@@ -354,6 +364,31 @@ class BaseBarConstructor:
                 self._pending_bars.append(bar)
 
         # 6. Return one bar from queue, or None
+        if self._pending_bars:
+            return self._pending_bars.popleft()
+        return None
+
+    def flush(self, timestamp: int | None = None) -> Bar | None:
+        """Force-close the in-progress bar and return it, or ``None``.
+
+        Use at end of stream, on a feed's session-close event, or before
+        checkpointing so an open bar is not left hanging across a gap.  The
+        bar is marked ``partial``.  When *timestamp* is omitted the close
+        instant is the calendar's session end for the last input, falling back
+        to the accumulator's own close timestamp.
+
+        Price-derived state is reset as at any session boundary, so a later
+        resumption never treats the flush gap as a price move.  Warmup and
+        subclass filters (e.g. ``min_run_length``) apply as in :meth:`update`.
+        """
+        if not self._accumulator._has_tick:
+            return None
+        close_ts = timestamp
+        if close_ts is None and self._last_timestamp is not None:
+            close_ts = self._calendar.session_end(self._last_timestamp)
+        self._emit_bar(close_ts=close_ts)
+        self._accumulator.on_session_boundary()
+        self._on_session_boundary()
         if self._pending_bars:
             return self._pending_bars.popleft()
         return None
@@ -1130,6 +1165,44 @@ class BaseBarConstructor:
         run bars).  The default always returns ``True``.
         """
         return True
+
+    def _detect_skipped_gap(
+        self, item: TickInfo | MinuteInfo, is_boundary: bool, session_id: str | None
+    ) -> bool:
+        """True when this in-session input belongs to a session after the last one.
+
+        A feed that only prints during trading hours never shows the engine an
+        out-of-session tick, so the boundary flip in :meth:`update` never fires
+        and one bar silently spans the weekend or a holiday.  Compare against
+        the calendar's next session open (or session identity when the calendar
+        can name sessions) instead.
+        """
+        if is_boundary or not self._in_session or self._last_timestamp is None:
+            return False
+        if not self._calendar.has_sessions:
+            return False
+        if session_id is not None and self._session_id is not None:
+            return session_id != self._session_id
+        next_open = self._calendar.next_session_open(self._last_timestamp)
+        # Guard against calendars whose "next open" is the input itself (no
+        # real sessions): only a strictly later opening indicates a gap.
+        return next_open > self._last_timestamp and item.timestamp >= next_open
+
+    def _skipped_gap_close_ts(self) -> int:
+        """Close instant for a bar whose session ended between two inputs."""
+        assert self._last_timestamp is not None
+        session_end = self._calendar.session_end(self._last_timestamp)
+        if session_end is not None:
+            return session_end
+        return self._calendar.next_session_open(self._last_timestamp)
+
+    def _on_session_boundary(self) -> None:  # noqa: B027
+        """Reset engine-level carried price state at a session boundary.
+
+        Accumulators reset their own metric state via
+        :meth:`BaseAccumulator.on_session_boundary`; this hook covers state
+        held by the constructor (the minute path's tick-rule derivation).
+        """
 
     def _session_transition_ts(self, item: TickInfo | MinuteInfo, is_boundary: bool) -> int:
         """The instant a session-boundary force-close logically happens.

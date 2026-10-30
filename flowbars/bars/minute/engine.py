@@ -169,6 +169,11 @@ class BaseMinuteBarConstructor(BaseBarConstructor):
         prev_sign = state.get("prev_sign")
         self._prev_sign = np.nan if prev_sign is None else float(prev_sign)
 
+    def _on_session_boundary(self) -> None:
+        """A session gap is not a tick-rule move: clear derived-sign state."""
+        self._prev_close = None
+        self._prev_sign = np.nan
+
     # ── numba dispatch ──────────────────────────────────────────────────
 
     def _numba_config(self) -> dict[str, float]:
