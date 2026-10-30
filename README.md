@@ -114,8 +114,8 @@ When a stream simply ends mid-session (no later input to reveal the gap), call
 `flush()` to emit the open bar as a `partial` bar:
 
 ```python
-bar = ctor.flush()          # close_ts = calendar session end of the last input
-bar = ctor.flush(now_ms)    # or an explicit close instant
+bar = ctor.flush()  # close_ts = calendar session end of the last input
+bar = ctor.flush(now_ms)  # or an explicit close instant
 ```
 
 `session_estimator="persist"` (default) keeps EWMA learning across sessions;

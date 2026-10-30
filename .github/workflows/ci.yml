@@ -11,8 +11,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install lint tools
@@ -27,26 +27,31 @@ jobs:
   # ── Tests across supported Python versions ──
   test:
     needs: lint
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
-          # numba doesn't support 3.13 yet — skip numba tests there
-          - python-version: "3.13"
-            numba: false
-          - python-version: "3.12"
-            numba: true
-          - python-version: "3.11"
+          # Python 3.9 predates ubuntu-latest (26.04); pin an image that ships it.
+          - python-version: "3.9"
+            os: ubuntu-22.04
             numba: true
           - python-version: "3.10"
+            os: ubuntu-latest
             numba: true
-          - python-version: "3.9"
+          - python-version: "3.11"
+            os: ubuntu-latest
             numba: true
+          - python-version: "3.12"
+            os: ubuntu-latest
+            numba: true
+          # numba doesn't support 3.13 yet — skip numba tests there
+          - python-version: "3.13"
+            os: ubuntu-latest
+            numba: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install package with test deps
@@ -64,8 +69,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install build tools

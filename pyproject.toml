@@ -83,7 +83,6 @@ warn_unused_ignores = false
 module = "numba"
 ignore_missing_imports = true
 warn_unused_ignores = true
-warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
 module = "exchange_calendars"
