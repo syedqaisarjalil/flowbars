@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flowbars"
-version = "0.1.0"
+version = "0.1.1"
 description = "Production-grade bar construction for financial ML — standard and information-driven bars, correct per AFML."
 readme = "README.md"
 license = "MIT"

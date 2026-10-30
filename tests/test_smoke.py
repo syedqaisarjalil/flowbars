@@ -9,7 +9,7 @@ class TestPackage:
     """Verify the package is installable and importable."""
 
     def test_version(self) -> None:
-        assert flowbars.__version__ == "0.1.0"
+        assert flowbars.__version__ == "0.1.1"
 
     def test_imports(self) -> None:
         """All public API symbols are importable."""
