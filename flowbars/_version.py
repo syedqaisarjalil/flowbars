@@ -5,4 +5,4 @@ metadata) can import it without triggering the package ``__init__`` and its
 circular imports.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
