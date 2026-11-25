@@ -301,3 +301,24 @@ def test_session_calendar_falls_back_to_python() -> None:
             threshold=0.02, calendar=cal, schema=MINUTE_SCHEMA, backend="numba"
         ).batch(df)
     assert _bars_equal(py, nb)
+
+
+@pytest.mark.parametrize(
+    "cls", [MinuteImbalanceVolumeBarConstructor, MinuteRunVolumeBarConstructor]
+)
+def test_zero_threshold_equivalence(cls: object) -> None:
+    """A zero EWMA threshold must not be floored differently by the backends."""
+    df = _minutes(120, seed=12)
+    df.loc[df.index[::4], "volume"] = 0.0
+
+    kwargs = {
+        "span": 10.0,
+        "initial_ewa_t": 0.0,
+        "initial_ewa_proportion": 0.5,
+        "schema": MINUTE_SCHEMA,
+    }
+    py_bars = cls(backend="python", **kwargs).batch(df)  # type: ignore[operator]
+    nb_bars = cls(backend="numba", **kwargs).batch(df)  # type: ignore[operator]
+
+    assert len(py_bars) == len(nb_bars) > 0
+    assert _bars_equal(py_bars, nb_bars)

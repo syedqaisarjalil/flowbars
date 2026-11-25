@@ -739,8 +739,6 @@ def _imbalance_bars_ewma_numba(
     ewa_t = initial_ewa_t
     ewa_proportion = initial_ewa_proportion  # signed
     threshold_val = ewa_t * abs(ewa_proportion)
-    if threshold_val <= 0.0:
-        threshold_val = 1.0
     # Signed overflow carried into the current bar; excluded from theta.
     bar_start_signed = 0.0
 
@@ -816,8 +814,6 @@ def _imbalance_bars_ewma_numba(
                 ewa_t = alpha * t_stat + (1.0 - alpha) * ewa_t
                 ewa_proportion = alpha * proportion_stat + (1.0 - alpha) * ewa_proportion
                 threshold_val = ewa_t * abs(ewa_proportion)
-                if threshold_val <= 0.0:
-                    threshold_val = 1.0
 
             # Overflow — uses the OLD threshold (the one that triggered the close)
             if signed_imbalance >= 0.0:
@@ -886,8 +882,6 @@ def _run_bars_ewma_numba(
         threshold_val = ewa_t * ewa_proportion
     else:
         threshold_val = ewa_t * (1.0 - ewa_proportion)
-    if threshold_val <= 0.0:
-        threshold_val = 1.0
 
     for i in range(n):
         price = prices[i]
@@ -964,29 +958,30 @@ def _run_bars_ewma_numba(
             # Compute bar statistics for EWMA update
             t_stat = total
 
-            # P⁺ computation
-            cur_buy = buy_cum
-            cur_sell = sell_cum
-            if run_sign > 0.0:
-                cur_buy += run_cum
-            elif run_sign < 0.0:
-                cur_sell += run_cum
+            # A zero-stat bar carries no proportion information, so it must
+            # not move either EWMA (mirrors EWMAThresholdEstimator).
+            if t_stat > 0.0:
+                # P⁺ computation
+                cur_buy = buy_cum
+                cur_sell = sell_cum
+                if run_sign > 0.0:
+                    cur_buy += run_cum
+                elif run_sign < 0.0:
+                    cur_sell += run_cum
 
-            total_buysell = cur_buy + cur_sell
-            if total_buysell > 0.0:
-                p_plus = cur_buy / total_buysell
-            else:
-                p_plus = 0.5
+                total_buysell = cur_buy + cur_sell
+                if total_buysell > 0.0:
+                    p_plus = cur_buy / total_buysell
+                else:
+                    p_plus = 0.5
 
-            # EWMA update
-            ewa_t = alpha * t_stat + (1.0 - alpha) * ewa_t
-            ewa_proportion = alpha * p_plus + (1.0 - alpha) * ewa_proportion
-            if ewa_proportion >= 1.0 - ewa_proportion:
-                threshold_val = ewa_t * ewa_proportion
-            else:
-                threshold_val = ewa_t * (1.0 - ewa_proportion)
-            if threshold_val <= 0.0:
-                threshold_val = 1.0
+                # EWMA update
+                ewa_t = alpha * t_stat + (1.0 - alpha) * ewa_t
+                ewa_proportion = alpha * p_plus + (1.0 - alpha) * ewa_proportion
+                if ewa_proportion >= 1.0 - ewa_proportion:
+                    threshold_val = ewa_t * ewa_proportion
+                else:
+                    threshold_val = ewa_t * (1.0 - ewa_proportion)
 
             # Overflow — uses the OLD threshold (the one that triggered the close)
             excess = total - old_threshold

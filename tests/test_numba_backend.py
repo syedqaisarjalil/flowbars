@@ -1148,3 +1148,66 @@ class TestNumbaBatchWrappers:
 
         with pytest.raises(KeyError):
             numba_batch_ewma("tick", timestamps, prices, volumes, sides, 0.1, 1.0, 0.5)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Degenerate EWMA thresholds — no backend-specific floor
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestDegenerateThresholdParity:
+    """A computed threshold of 0 must behave identically on both backends.
+
+    The numba kernels used to floor it to 1.0 while Python kept the exact
+    AFML value, so zero-seed constructors diverged.
+    """
+
+    def _frame(self) -> pd.DataFrame:
+        n = 400
+        volumes = np.zeros(n)
+        # Sub-1 volumes make the Python zero threshold visible: a floored
+        # numba threshold of 1.0 would not close on the first tick.
+        volumes[::3] = 0.5
+        prices = 100.0 + np.cumsum(np.where(np.arange(n) % 2 == 0, 0.1, -0.1))
+        sides = np.where(np.arange(n) % 2 == 0, 1.0, -1.0)
+        return pd.DataFrame(
+            {
+                "ts": np.arange(n, dtype=np.int64) * 10,
+                "px": prices,
+                "vol": volumes,
+                "side": sides,
+            }
+        )
+
+    @pytest.mark.parametrize(
+        ("acc_factory", "bar_family"),
+        [
+            (
+                lambda: ImbalanceAccumulator(bar_type="imbalance_volume", metric="volume"),
+                "imbalance",
+            ),
+            (lambda: RunAccumulator(bar_type="run_volume", metric="volume"), "run"),
+        ],
+    )
+    def test_zero_threshold_equivalence(self, acc_factory: object, bar_family: str) -> None:
+        df = self._frame()
+
+        def build(backend: str) -> BaseBarConstructor:
+            est = EWMAThresholdEstimator(
+                bar_family=bar_family,
+                span=10.0,
+                initial_ewa_t=0.0,
+                initial_ewa_proportion=0.5,
+            )
+            return BaseBarConstructor(
+                acc_factory(),  # type: ignore[operator]
+                est,
+                schema=default_schema(has_side=True),
+                backend=backend,
+            )
+
+        py_bars = build("python").batch(df)
+        nb_bars = build("numba").batch(df)
+
+        assert len(py_bars) == len(nb_bars) > 0
+        assert _bars_equal(py_bars, nb_bars)

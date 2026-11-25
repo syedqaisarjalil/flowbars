@@ -231,8 +231,9 @@ class EWMAThresholdEstimator(ThresholdEstimator):
     def current_threshold(self) -> float:
         """The current threshold computed from the two EWMA terms.
 
-        Returns 0.0 when :math:`E[T] = 0` (no bars observed + zero initial
-        seed).
+        This is the exact AFML expression — no floor is applied.  It returns
+        0.0 when :math:`E[T] = 0` or :math:`E[\\theta] = 0`, and the numba
+        kernels mirror that exactly so both backends produce identical bars.
         """
         if self._bar_family == "imbalance":
             return self._ewa_t * abs(self._ewa_proportion)
