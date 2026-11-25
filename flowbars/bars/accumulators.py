@@ -510,6 +510,10 @@ class ImbalanceAccumulator(BaseAccumulator):
             raise ValueError(f"metric must be 'tick', 'volume', or 'dollar', got {metric!r}")
         self._metric = metric
         self._signed_imbalance = 0.0
+        # Signed overflow carried into the current bar at its start.  The
+        # close-stat proportion must subtract it so numerator and denominator
+        # cover the same items (see get_close_stats).
+        self._bar_start_signed = 0.0
 
     def add_tick(self, tick: TickInfo) -> None:
         super().add_tick(tick)
@@ -522,14 +526,23 @@ class ImbalanceAccumulator(BaseAccumulator):
         return abs(self._signed_imbalance) >= threshold
 
     def get_close_stats(self) -> tuple[float, float]:
-        """Return (t_stat, θ) where θ = signed_imbalance / t_stat."""
+        """Return (t_stat, θ) where θ is the bar's signed imbalance proportion.
+
+        The numerator must exclude the overflow carried in from the previous
+        bar: ``t_stat`` counts only this bar's items, so including the carry
+        would let ``|θ|`` exceed 1 and poison ``E[θ]``.
+        """
         if self._metric == "tick":
             t_stat = float(self._num_ticks)
         elif self._metric == "volume":
             t_stat = self._volume
         else:  # dollar
             t_stat = self._dollar_value
-        proportion = self._signed_imbalance / t_stat if t_stat > 0.0 else 0.0
+        if t_stat > 0.0:
+            proportion = (self._signed_imbalance - self._bar_start_signed) / t_stat
+            proportion = min(1.0, max(-1.0, proportion))
+        else:
+            proportion = 0.0
         return (t_stat, proportion)
 
     def close(self, threshold: float) -> Bar:
@@ -538,11 +551,13 @@ class ImbalanceAccumulator(BaseAccumulator):
         sign = 1.0 if self._signed_imbalance >= 0.0 else -1.0
         excess = abs(self._signed_imbalance) - threshold
         self._signed_imbalance = sign * max(0.0, excess)
+        self._bar_start_signed = self._signed_imbalance
         return bar
 
     def discard(self) -> None:
         super().discard()
         self._signed_imbalance = 0.0
+        self._bar_start_signed = 0.0
 
     def get_params(self) -> dict[str, Any]:
         params = super().get_params()
@@ -552,12 +567,14 @@ class ImbalanceAccumulator(BaseAccumulator):
     def get_state(self) -> dict[str, Any]:
         state = super().get_state()
         state["signed_imbalance"] = self._signed_imbalance
+        state["bar_start_signed"] = self._bar_start_signed
         state["metric"] = self._metric
         return state
 
     def load_state(self, state: dict[str, Any]) -> None:
         super().load_state(state)
         self._signed_imbalance = state.get("signed_imbalance", 0.0)
+        self._bar_start_signed = state.get("bar_start_signed", 0.0)
         self._metric = state.get("metric", "tick")
 
 

@@ -83,7 +83,8 @@ class ThresholdEstimator(ABC):
         proportion_stat : float
             For **imbalance** bars: signed imbalance proportion
             :math:`\\theta \\in [-1, 1]`
-            (``signed_imbalance / t_stat``).
+            (this bar's signed imbalance over its own ``t_stat``; any
+            overflow carried in from the previous bar is excluded).
             For **run** bars: buy-run proportion
             :math:`P^+ \\in [0, 1]`
             (``buy_run_total / total_run_stat``).
@@ -251,6 +252,11 @@ class EWMAThresholdEstimator(ThresholdEstimator):
         """
         if t_stat < 0:
             raise ValueError(f"t_stat must be non-negative, got {t_stat}")
+        if t_stat == 0:
+            # A zero-metric bar (e.g. only zero-volume ticks after a carried
+            # imbalance) has no proportion information.  Updating either EWMA
+            # would drag both estimates toward zero and bias the threshold.
+            return
 
         self._ewa_t = self._alpha * t_stat + (1.0 - self._alpha) * self._ewa_t
         self._ewa_proportion = (
@@ -611,12 +617,14 @@ def _simulate_imbalance_bars(
     t_stats : list of float
         Total metric in each bar.
     proportion_stats : list of float
-        Signed imbalance proportion θ = signed_imbalance / t_stat for each bar.
+        Signed imbalance proportion θ for each bar: this bar's signed imbalance
+        over its own total metric, excluding overflow carried from the prior bar.
     """
     t_stats: list[float] = []
     proportion_stats: list[float] = []
 
     signed_imbalance = 0.0
+    bar_start_signed = 0.0
     total_metric = 0.0
 
     for tick in ticks:
@@ -629,13 +637,18 @@ def _simulate_imbalance_bars(
 
         if abs(signed_imbalance) >= threshold:
             t_stats.append(total_metric)
-            proportion = signed_imbalance / total_metric if total_metric > 0.0 else 0.0
+            if total_metric > 0.0:
+                proportion = (signed_imbalance - bar_start_signed) / total_metric
+                proportion = min(1.0, max(-1.0, proportion))
+            else:
+                proportion = 0.0
             proportion_stats.append(proportion)
 
             # Overflow: signed excess carries into next bar
             sign = 1.0 if signed_imbalance >= 0.0 else -1.0
             excess = abs(signed_imbalance) - threshold
             signed_imbalance = sign * max(0.0, excess)
+            bar_start_signed = signed_imbalance
             total_metric = 0.0
 
     return t_stats, proportion_stats
@@ -1085,6 +1098,7 @@ def _simulate_minute_imbalance_bars(
     t_stats: list[float] = []
     proportion_stats: list[float] = []
     signed_imbalance = 0.0
+    bar_start_signed = 0.0
     total_metric = 0.0
 
     for m, side in zip(minutes, signs):
@@ -1095,10 +1109,16 @@ def _simulate_minute_imbalance_bars(
 
         if abs(signed_imbalance) >= threshold:
             t_stats.append(total_metric)
-            proportion_stats.append(signed_imbalance / total_metric if total_metric > 0.0 else 0.0)
+            if total_metric > 0.0:
+                proportion = (signed_imbalance - bar_start_signed) / total_metric
+                proportion = min(1.0, max(-1.0, proportion))
+            else:
+                proportion = 0.0
+            proportion_stats.append(proportion)
             sign = 1.0 if signed_imbalance >= 0.0 else -1.0
             excess = abs(signed_imbalance) - threshold
             signed_imbalance = sign * max(0.0, excess)
+            bar_start_signed = signed_imbalance
             total_metric = 0.0
 
     return t_stats, proportion_stats

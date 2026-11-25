@@ -657,6 +657,8 @@ def _minute_imbalance_bars_ewma_numba(
     threshold_val = ewa_t * abs(ewa_proportion)
     if threshold_val <= 0.0:
         threshold_val = 1.0
+    # Signed overflow carried into the current bar; excluded from theta.
+    bar_start_signed = 0.0
 
     for i in range(n):
         o_i = opens[i]
@@ -713,17 +715,23 @@ def _minute_imbalance_bars_ewma_numba(
 
             old_threshold = threshold_val
 
+            # The proportion excludes overflow carried in from the previous
+            # bar so numerator and denominator cover the same items.
             if metric_code == _METRIC_VOLUME:
                 t_stat = vol
             else:
                 t_stat = dollar_val
-            proportion_stat = signed_imbalance / t_stat if t_stat > 0.0 else 0.0
-
-            ewa_t = alpha * t_stat + (1.0 - alpha) * ewa_t
-            ewa_proportion = alpha * proportion_stat + (1.0 - alpha) * ewa_proportion
-            threshold_val = ewa_t * abs(ewa_proportion)
-            if threshold_val <= 0.0:
-                threshold_val = 1.0
+            if t_stat > 0.0:
+                proportion_stat = (signed_imbalance - bar_start_signed) / t_stat
+                if proportion_stat > 1.0:
+                    proportion_stat = 1.0
+                elif proportion_stat < -1.0:
+                    proportion_stat = -1.0
+                ewa_t = alpha * t_stat + (1.0 - alpha) * ewa_t
+                ewa_proportion = alpha * proportion_stat + (1.0 - alpha) * ewa_proportion
+                threshold_val = ewa_t * abs(ewa_proportion)
+                if threshold_val <= 0.0:
+                    threshold_val = 1.0
 
             if signed_imbalance >= 0.0:
                 sign = 1.0
@@ -731,6 +739,7 @@ def _minute_imbalance_bars_ewma_numba(
                 sign = -1.0
             excess = abs(signed_imbalance) - old_threshold
             signed_imbalance = sign * excess if excess > 0.0 else 0.0
+            bar_start_signed = signed_imbalance
             has_minute = False
             open_val = 0.0
             high_val = 0.0

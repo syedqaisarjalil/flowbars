@@ -522,7 +522,7 @@ def _imbalance_bars_numba(
             elif metric_code == 1:
                 metric_val = vol_i
             else:  # dollar
-                metric_val = price * vol_i * multiplier * multiplier
+                metric_val = price * vol_i * multiplier
             signed_imbalance += side * metric_val
 
         if abs(signed_imbalance) >= threshold:
@@ -741,6 +741,8 @@ def _imbalance_bars_ewma_numba(
     threshold_val = ewa_t * abs(ewa_proportion)
     if threshold_val <= 0.0:
         threshold_val = 1.0
+    # Signed overflow carried into the current bar; excluded from theta.
+    bar_start_signed = 0.0
 
     for i in range(n):
         price = prices[i]
@@ -772,7 +774,7 @@ def _imbalance_bars_ewma_numba(
             elif metric_code == 1:
                 metric_val = vol_i
             else:
-                metric_val = price * vol_i * multiplier * multiplier
+                metric_val = price * vol_i * multiplier
             signed_imbalance += side * metric_val
 
         if abs(signed_imbalance) >= threshold_val:
@@ -794,7 +796,9 @@ def _imbalance_bars_ewma_numba(
             # Save old threshold for overflow computation
             old_threshold = threshold_val
 
-            # Compute bar statistics for EWMA update
+            # Compute bar statistics for EWMA update.  The proportion excludes
+            # overflow carried in from the previous bar so numerator and
+            # denominator cover the same items; |theta| is then <= 1.
             if metric_code == 0:
                 t_stat = float(n_ticks)
             elif metric_code == 1:
@@ -802,14 +806,18 @@ def _imbalance_bars_ewma_numba(
             else:
                 t_stat = dollar_val
 
-            proportion_stat = signed_imbalance / t_stat if t_stat > 0.0 else 0.0
-
-            # EWMA update — produces the threshold for the NEXT bar
-            ewa_t = alpha * t_stat + (1.0 - alpha) * ewa_t
-            ewa_proportion = alpha * proportion_stat + (1.0 - alpha) * ewa_proportion
-            threshold_val = ewa_t * abs(ewa_proportion)
-            if threshold_val <= 0.0:
-                threshold_val = 1.0
+            if t_stat > 0.0:
+                proportion_stat = (signed_imbalance - bar_start_signed) / t_stat
+                if proportion_stat > 1.0:
+                    proportion_stat = 1.0
+                elif proportion_stat < -1.0:
+                    proportion_stat = -1.0
+                # EWMA update — produces the threshold for the NEXT bar
+                ewa_t = alpha * t_stat + (1.0 - alpha) * ewa_t
+                ewa_proportion = alpha * proportion_stat + (1.0 - alpha) * ewa_proportion
+                threshold_val = ewa_t * abs(ewa_proportion)
+                if threshold_val <= 0.0:
+                    threshold_val = 1.0
 
             # Overflow — uses the OLD threshold (the one that triggered the close)
             if signed_imbalance >= 0.0:
@@ -818,6 +826,7 @@ def _imbalance_bars_ewma_numba(
                 sign = -1.0
             excess = abs(signed_imbalance) - old_threshold
             signed_imbalance = sign * excess if excess > 0.0 else 0.0
+            bar_start_signed = signed_imbalance
             has_tick = False
             open_val = 0.0
             high_val = 0.0
